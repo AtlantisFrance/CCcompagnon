@@ -38,10 +38,10 @@ define('ALLOWED_ORIGINS', [
     'https://atlantis-city.com',
     'https://www.atlantis-city.com',
     'https://compagnon.atlantis-city.com',
+    'https://maps.atlantis-city.com',          // ✅ AJOUTÉ - Shapespark
     'https://idea-services.re',
     'http://localhost',
     'http://127.0.0.1',
-    // Ajoute ici les domaines de tes scènes Shapespark
 ]);
 
 // ============================================

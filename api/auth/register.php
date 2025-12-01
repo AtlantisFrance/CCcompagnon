@@ -40,9 +40,9 @@ if (!isValidEmail($email)) {
     errorResponse('Format d\'email invalide', 400);
 }
 
-// Valider le mot de passe
+// Valider le mot de passe (6 caractères minimum)
 if (!isValidPassword($password)) {
-    errorResponse('Le mot de passe doit contenir au moins 8 caractères', 400);
+    errorResponse('Le mot de passe doit contenir au moins 6 caractères', 400);
 }
 
 // Normaliser l'email (minuscules)
@@ -65,7 +65,7 @@ try {
     // Générer un token de vérification email
     $verificationToken = generateToken(32);
     
-    // Insérer l'utilisateur
+    // Insérer l'utilisateur (statut active par défaut)
     $stmt = $db->prepare("
         INSERT INTO users (
             email, 
@@ -92,7 +92,7 @@ try {
         ':first_name' => $firstName,
         ':last_name' => $lastName,
         ':company' => $company,
-        'status' => 'active'
+        ':status' => 'active',  // ✅ Actif par défaut
         ':verification_token' => $verificationToken
     ]);
     
@@ -108,8 +108,8 @@ try {
     successResponse([
         'user_id' => (int)$userId,
         'email' => $email,
-        'status' => 'pending',
-        'message' => 'Compte créé avec succès. En attente de validation par un administrateur.'
+        'status' => 'active',
+        'message' => 'Compte créé ! Vous pouvez maintenant vous connecter.'
     ], 'Inscription réussie');
     
 } catch (PDOException $e) {

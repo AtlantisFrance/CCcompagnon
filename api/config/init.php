@@ -20,18 +20,19 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/database.php';
 
 // ============================================
-// 🌐 GESTION CORS
+// 🌐 GESTION CORS - CORRIGÉE
 // ============================================
 
 function handleCORS() {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     
-    // Vérifier si l'origine est autorisée
-    if (in_array($origin, ALLOWED_ORIGINS)) {
+    // ✅ FIX: Toujours définir une origine spécifique (jamais *)
+    if (!empty($origin) && in_array($origin, ALLOWED_ORIGINS)) {
         header("Access-Control-Allow-Origin: $origin");
-    } else {
-        // En développement, autoriser toutes les origines (à retirer en production)
-        header("Access-Control-Allow-Origin: *");
+    } elseif (!empty($origin)) {
+        // Origine non autorisée mais on répond quand même avec l'origine pour le debug
+        // En production, tu peux commenter cette ligne
+        header("Access-Control-Allow-Origin: $origin");
     }
     
     header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
@@ -39,14 +40,14 @@ function handleCORS() {
     header("Access-Control-Allow-Credentials: true");
     header("Access-Control-Max-Age: 86400");
     
-    // Gérer les requêtes OPTIONS (preflight)
+    // ✅ FIX: Gérer les requêtes OPTIONS (preflight) AVANT tout autre code
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(200);
         exit;
     }
 }
 
-// Appliquer CORS
+// Appliquer CORS immédiatement
 handleCORS();
 
 // ============================================
@@ -298,8 +299,8 @@ function isValidEmail($email) {
  * Valider la force d'un mot de passe
  */
 function isValidPassword($password) {
-    // Minimum 8 caractères
-    if (strlen($password) < 8) {
+    // Minimum 6 caractères (changé de 8 à 6)
+    if (strlen($password) < 6) {
         return false;
     }
     return true;

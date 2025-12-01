@@ -138,7 +138,8 @@
       return {
         success: true,
         message:
-          "Compte créé avec succès ! Vous pouvez maintenant vous connecter.",
+          result.data?.message ||
+          "Compte créé ! Vous pouvez maintenant vous connecter.",
       };
     }
 
@@ -237,12 +238,17 @@
 
     const overlay = document.createElement("div");
     overlay.className = "atlantis-auth-overlay";
-    overlay.onclick = (e) => {
-      if (e.target === overlay) closeAuthPopup();
-    };
+    overlay.id = "atlantis-auth-overlay";
+
+    // ✅ FIX 1: Fermer SEULEMENT si on clique sur l'overlay, pas sur ses enfants
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        closeAuthPopup();
+      }
+    });
 
     overlay.innerHTML = `
-     <div class="atlantis-auth-popup">
+     <div class="atlantis-auth-popup" onclick="event.stopPropagation()">
        <div class="auth-header">
          <div class="auth-logo">
            <svg viewBox="0 0 24 24">
@@ -251,7 +257,7 @@
          </div>
          <h2 class="auth-title">Atlantis City</h2>
          <p class="auth-subtitle">Accédez à votre espace</p>
-         <button class="auth-close" onclick="window.atlantisAuth.closePopup()">×</button>
+         <button class="auth-close" id="auth-close-btn">×</button>
          
          <div class="auth-tabs">
            <button class="auth-tab active" data-tab="login">Se connecter</button>
@@ -267,11 +273,11 @@
          <form class="auth-form active" id="auth-login-form">
            <div class="auth-input-group">
              <label class="auth-label">Email</label>
-             <input type="email" class="auth-input" name="email" placeholder="votre@email.com" required>
+             <input type="email" class="auth-input" id="login-email" placeholder="votre@email.com" required>
            </div>
            <div class="auth-input-group">
              <label class="auth-label">Mot de passe</label>
-             <input type="password" class="auth-input" name="password" placeholder="••••••••" required>
+             <input type="password" class="auth-input" id="login-password" placeholder="••••••••" required>
            </div>
            <button type="submit" class="auth-submit">Se connecter</button>
          </form>
@@ -281,24 +287,24 @@
            <div class="auth-input-row">
              <div class="auth-input-group">
                <label class="auth-label">Prénom</label>
-               <input type="text" class="auth-input" name="first_name" placeholder="Jean" required>
+               <input type="text" class="auth-input" id="register-first-name" placeholder="Jean" required>
              </div>
              <div class="auth-input-group">
                <label class="auth-label">Nom</label>
-               <input type="text" class="auth-input" name="last_name" placeholder="Dupont" required>
+               <input type="text" class="auth-input" id="register-last-name" placeholder="Dupont" required>
              </div>
            </div>
            <div class="auth-input-group">
              <label class="auth-label">Email</label>
-             <input type="email" class="auth-input" name="email" placeholder="votre@email.com" required>
+             <input type="email" class="auth-input" id="register-email" placeholder="votre@email.com" required>
            </div>
            <div class="auth-input-group">
              <label class="auth-label">Société (optionnel)</label>
-             <input type="text" class="auth-input" name="company" placeholder="Ma Société">
+             <input type="text" class="auth-input" id="register-company" placeholder="Ma Société">
            </div>
            <div class="auth-input-group">
              <label class="auth-label">Mot de passe</label>
-             <input type="password" class="auth-input" name="password" placeholder="6 caractères minimum" minlength="6" required>
+             <input type="password" class="auth-input" id="register-password" placeholder="6 caractères minimum" minlength="6" required>
            </div>
            <button type="submit" class="auth-submit">Créer mon compte</button>
          </form>
@@ -308,21 +314,43 @@
 
     document.body.appendChild(overlay);
 
-    // Tab switching
-    overlay.querySelectorAll(".auth-tab").forEach((tab) => {
-      tab.onclick = () => switchTab(tab.dataset.tab);
+    // ✅ FIX 2: Attacher les événements après que le DOM soit prêt
+    // Bouton fermer
+    document.getElementById("auth-close-btn").addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeAuthPopup();
     });
 
-    // Form submissions
-    document.getElementById("auth-login-form").onsubmit = handleLogin;
-    document.getElementById("auth-register-form").onsubmit = handleRegister;
+    // Tab switching
+    overlay.querySelectorAll(".auth-tab").forEach((tab) => {
+      tab.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        switchTab(tab.dataset.tab);
+      });
+    });
+
+    // ✅ FIX 3: Form submissions avec IDs au lieu de name attributes
+    document
+      .getElementById("auth-login-form")
+      .addEventListener("submit", handleLogin);
+    document
+      .getElementById("auth-register-form")
+      .addEventListener("submit", handleRegister);
+
+    // Empêcher la fermeture quand on clique sur les inputs
+    overlay.querySelectorAll(".auth-input").forEach((input) => {
+      input.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+    });
   }
 
   function closeAuthPopup() {
-    const overlay = document.querySelector(".atlantis-auth-overlay");
+    const overlay = document.getElementById("atlantis-auth-overlay");
     if (overlay) {
-      overlay.style.opacity = "0";
-      setTimeout(() => overlay.remove(), 300);
+      overlay.remove();
     }
   }
 
@@ -360,11 +388,18 @@
   // === FORM HANDLERS ===
   async function handleLogin(e) {
     e.preventDefault();
-    const form = e.target;
-    const btn = form.querySelector(".auth-submit");
+    e.stopPropagation();
 
-    const email = form.email.value.trim();
-    const password = form.password.value;
+    const btn = e.target.querySelector(".auth-submit");
+
+    // ✅ FIX 4: Utiliser IDs au lieu de form.name.value
+    const email = document.getElementById("login-email").value.trim();
+    const password = document.getElementById("login-password").value;
+
+    if (!email || !password) {
+      showMessage("Veuillez remplir tous les champs", "error");
+      return;
+    }
 
     btn.classList.add("loading");
     btn.disabled = true;
@@ -381,16 +416,31 @@
 
   async function handleRegister(e) {
     e.preventDefault();
-    const form = e.target;
-    const btn = form.querySelector(".auth-submit");
+    e.stopPropagation();
 
+    const btn = e.target.querySelector(".auth-submit");
+
+    // ✅ FIX 5: Utiliser IDs au lieu de form.name.value
     const data = {
-      email: form.email.value.trim(),
-      password: form.password.value,
-      first_name: form.first_name.value.trim(),
-      last_name: form.last_name.value.trim(),
-      company: form.company.value.trim(),
+      email: document.getElementById("register-email").value.trim(),
+      password: document.getElementById("register-password").value,
+      first_name: document.getElementById("register-first-name").value.trim(),
+      last_name: document.getElementById("register-last-name").value.trim(),
+      company: document.getElementById("register-company").value.trim(),
     };
+
+    if (!data.email || !data.password || !data.first_name || !data.last_name) {
+      showMessage("Veuillez remplir tous les champs obligatoires", "error");
+      return;
+    }
+
+    if (data.password.length < 6) {
+      showMessage(
+        "Le mot de passe doit contenir au moins 6 caractères",
+        "error"
+      );
+      return;
+    }
 
     btn.classList.add("loading");
     btn.disabled = true;
@@ -402,8 +452,14 @@
 
     if (result.success) {
       showMessage(result.message, "success");
-      form.reset();
-      // Basculer vers l'onglet connexion après 2 secondes
+      // Reset les champs
+      document.getElementById("register-email").value = "";
+      document.getElementById("register-password").value = "";
+      document.getElementById("register-first-name").value = "";
+      document.getElementById("register-last-name").value = "";
+      document.getElementById("register-company").value = "";
+
+      // Basculer vers login après 2 secondes
       setTimeout(() => {
         switchTab("login");
       }, 2000);
@@ -439,21 +495,21 @@
        ${roleLabel ? `<span class="auth-user-role">${roleLabel}</span>` : ""}
      </div>
      <div class="auth-user-actions">
-       <button class="auth-user-action" onclick="window.atlantisAuth.openProfile()">
+       <button class="auth-user-action" id="user-profile-btn">
          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
          Mon profil
        </button>
        ${
          currentUser.global_role === "super_admin"
            ? `
-       <button class="auth-user-action" onclick="window.atlantisAuth.openAdmin()">
+       <button class="auth-user-action" id="user-admin-btn">
          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
          Administration
        </button>
        `
            : ""
        }
-       <button class="auth-user-action logout" onclick="window.atlantisAuth.logout()">
+       <button class="auth-user-action logout" id="user-logout-btn">
          <svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
          Déconnexion
        </button>
@@ -462,6 +518,27 @@
 
     document.body.appendChild(menu);
     userMenuOpen = true;
+
+    // Attacher les événements
+    document
+      .getElementById("user-profile-btn")
+      .addEventListener("click", () => {
+        closeUserMenu();
+        showNotification("Profil - Bientôt disponible", "success");
+      });
+
+    if (document.getElementById("user-admin-btn")) {
+      document
+        .getElementById("user-admin-btn")
+        .addEventListener("click", () => {
+          closeUserMenu();
+          window.open("https://compagnon.atlantis-city.com/crm/", "_blank");
+        });
+    }
+
+    document.getElementById("user-logout-btn").addEventListener("click", () => {
+      logout();
+    });
 
     // Fermer au clic extérieur
     setTimeout(() => {

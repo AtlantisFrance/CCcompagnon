@@ -23,6 +23,13 @@
     initialized: false,
     cachedZones: [],
     openMenuId: null, // Pour tracker le menu ouvert
+    userSort: {
+      column: "last_name",
+      direction: "asc",
+    },
+    spaceSort: {
+      direction: "asc", // asc = A→Z, desc = Z→A
+    },
     data: {
       dashboard: null,
       users: [],
@@ -438,15 +445,63 @@
     `;
   }
 
-  // === USERS ===
-  async function loadUsers() {
-    const result = await apiCall("/admin/users.php");
-    state.data.users = result.users || [];
+  // === USER SORTING ===
+  function getSortIcon(column) {
+    if (state.userSort.column !== column) {
+      return '<span class="sort-icon">⇅</span>';
+    }
+    return state.userSort.direction === "asc"
+      ? '<span class="sort-icon active">▲</span>'
+      : '<span class="sort-icon active">▼</span>';
+  }
 
-    const stats = result.stats || {
-      total: 0,
-      active: 0,
-      suspended: 0,
+  function sortUsersData(users) {
+    const { column, direction } = state.userSort;
+    return [...users].sort((a, b) => {
+      let valA, valB;
+      switch (column) {
+        case "last_name":
+          valA = `${a.last_name || ""} ${a.first_name || ""}`.toLowerCase();
+          valB = `${b.last_name || ""} ${b.first_name || ""}`.toLowerCase();
+          break;
+        case "email":
+          valA = (a.email || "").toLowerCase();
+          valB = (b.email || "").toLowerCase();
+          break;
+        case "company":
+          valA = (a.company || "").toLowerCase();
+          valB = (b.company || "").toLowerCase();
+          break;
+        default:
+          valA = "";
+          valB = "";
+      }
+      if (valA < valB) return direction === "asc" ? -1 : 1;
+      if (valA > valB) return direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }
+
+  function sortUsers(column) {
+    if (state.userSort.column === column) {
+      state.userSort.direction =
+        state.userSort.direction === "asc" ? "desc" : "asc";
+    } else {
+      state.userSort.column = column;
+      state.userSort.direction = "asc";
+    }
+    renderUsersTable();
+  }
+
+  function renderUsersTable() {
+    const users = state.data.users;
+    const sortedUsers = sortUsersData(
+      users.filter((u) => u.status !== "pending")
+    );
+    const stats = {
+      total: users.filter((u) => u.status !== "pending").length,
+      active: users.filter((u) => u.status === "active").length,
+      suspended: users.filter((u) => u.status === "suspended").length,
     };
 
     const el = document.querySelector("#section-users .crm-section-content");
@@ -505,6 +560,28 @@
           color: var(--text-primary);
           border-color: var(--accent-primary);
         }
+        .sortable {
+          cursor: pointer;
+          user-select: none;
+          transition: all 0.2s ease;
+        }
+        .sortable:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+        }
+        .sort-icon {
+          margin-left: 6px;
+          font-size: 10px;
+          color: var(--text-muted);
+          opacity: 0.5;
+        }
+        .sortable:hover .sort-icon {
+          opacity: 1;
+        }
+        .sort-icon.active {
+          color: var(--accent-primary);
+          opacity: 1;
+        }
       </style>
       
       <div class="crm-card">
@@ -525,9 +602,15 @@
           <table class="crm-table">
             <thead>
               <tr>
-                <th>Utilisateur</th>
-                <th>Email</th>
-                <th>Entreprise</th>
+                <th class="sortable" onclick="window.CRM.sortUsers('last_name')">Utilisateur ${getSortIcon(
+                  "last_name"
+                )}</th>
+                <th class="sortable" onclick="window.CRM.sortUsers('email')">Email ${getSortIcon(
+                  "email"
+                )}</th>
+                <th class="sortable" onclick="window.CRM.sortUsers('company')">Entreprise ${getSortIcon(
+                  "company"
+                )}</th>
                 <th>Rôle</th>
                 <th>Statut</th>
                 <th>Connexions</th>
@@ -535,52 +618,51 @@
               </tr>
             </thead>
             <tbody>
-              ${state.data.users
-                .filter((user) => user.status !== "pending")
+              ${sortedUsers
                 .map(
                   (user) => `
-                  <tr>
-                    <td>
-                      <div style="display: flex; align-items: center; gap: 10px;">
-                        <div class="crm-user-avatar" style="width:32px;height:32px;font-size:12px;">
-                          ${
-                            (user.first_name?.[0] || "") +
-                            (user.last_name?.[0] || "")
-                          }
-                        </div>
-                        ${user.first_name} ${user.last_name}
-                      </div>
-                    </td>
-                    <td>${user.email}</td>
-                    <td>${user.company || "-"}</td>
-                    <td>
-                      <span class="crm-badge ${
-                        user.global_role === "super_admin"
-                          ? "crm-badge-purple"
-                          : "crm-badge-info"
-                      }">
+                <tr>
+                  <td>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <div class="crm-user-avatar" style="width:32px;height:32px;font-size:12px;">
                         ${
-                          user.global_role === "super_admin"
-                            ? "SUPER ADMIN"
-                            : "USER"
+                          (user.first_name?.[0] || "") +
+                          (user.last_name?.[0] || "")
                         }
-                      </span>
-                    </td>
-                    <td>
-                      <span class="crm-badge ${getStatusBadge(user.status)}">
-                        ${user.status === "active" ? "ACTIF" : "SUSPENDU"}
-                      </span>
-                    </td>
-                    <td>${user.login_count || 0}</td>
-                    <td style="text-align: center;">
-                      <button class="action-btn-dots" onclick="window.CRM.toggleUserMenu(${
-                        user.id
-                      }, event)" title="Actions">
-                        ⋮
-                      </button>
-                    </td>
-                  </tr>
-                `
+                      </div>
+                      ${user.first_name} ${user.last_name}
+                    </div>
+                  </td>
+                  <td>${user.email}</td>
+                  <td>${user.company || "-"}</td>
+                  <td>
+                    <span class="crm-badge ${
+                      user.global_role === "super_admin"
+                        ? "crm-badge-purple"
+                        : "crm-badge-info"
+                    }">
+                      ${
+                        user.global_role === "super_admin"
+                          ? "SUPER ADMIN"
+                          : "USER"
+                      }
+                    </span>
+                  </td>
+                  <td>
+                    <span class="crm-badge ${getStatusBadge(user.status)}">
+                      ${user.status === "active" ? "ACTIF" : "SUSPENDU"}
+                    </span>
+                  </td>
+                  <td>${user.login_count || 0}</td>
+                  <td style="text-align: center;">
+                    <button class="action-btn-dots" onclick="window.CRM.toggleUserMenu(${
+                      user.id
+                    }, event)" title="Actions">
+                      ⋮
+                    </button>
+                  </td>
+                </tr>
+              `
                 )
                 .join("")}
             </tbody>
@@ -588,6 +670,13 @@
         </div>
       </div>
     `;
+  }
+
+  // === USERS ===
+  async function loadUsers() {
+    const result = await apiCall("/admin/users.php");
+    state.data.users = result.users || [];
+    renderUsersTable();
   }
 
   // === EDIT USER PROFILE ===
@@ -1044,25 +1133,79 @@
     }
   }
 
-  // === SPACES ===
-  async function loadSpaces() {
-    const result = await apiCall("/admin/spaces.php");
-    state.data.spaces = result.spaces || [];
+  // === SPACES SORTING ===
+  function getSpaceSortIcon() {
+    return state.spaceSort.direction === "asc"
+      ? '<span class="sort-icon active">▲</span>'
+      : '<span class="sort-icon active">▼</span>';
+  }
+
+  function sortSpacesData(spaces) {
+    const { direction } = state.spaceSort;
+    return [...spaces].sort((a, b) => {
+      const valA = (a.name || "").toLowerCase();
+      const valB = (b.name || "").toLowerCase();
+      if (valA < valB) return direction === "asc" ? -1 : 1;
+      if (valA > valB) return direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }
+
+  function sortSpaces() {
+    state.spaceSort.direction =
+      state.spaceSort.direction === "asc" ? "desc" : "asc";
+    renderSpacesTree();
+  }
+
+  function renderSpacesTree() {
+    const spaces = state.data.spaces;
+    const sortedSpaces = sortSpacesData(spaces);
 
     const el = document.querySelector("#section-spaces .crm-section-content");
     el.innerHTML = `
+      <style>
+        .sort-btn {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-color);
+          border-radius: 8px;
+          padding: 8px 14px;
+          cursor: pointer;
+          font-size: 13px;
+          color: var(--text-secondary);
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .sort-btn:hover {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+          border-color: var(--accent-primary);
+        }
+        .sort-btn .sort-icon {
+          font-size: 10px;
+          color: var(--accent-primary);
+        }
+      </style>
       <div class="crm-card">
         <div class="crm-card-header">
-          <h3 class="crm-card-title">📦 Espaces Shapespark</h3>
-          <button class="crm-btn crm-btn-primary" onclick="window.CRM.createSpace()">
-            ➕ Nouvel espace
-          </button>
+          <h3 class="crm-card-title">📦 Espaces Shapespark (${
+            spaces.length
+          })</h3>
+          <div style="display: flex; gap: 10px;">
+            <button class="sort-btn" onclick="window.CRM.sortSpaces()" title="Trier par nom">
+              Nom ${getSpaceSortIcon()}
+            </button>
+            <button class="crm-btn crm-btn-primary" onclick="window.CRM.createSpace()">
+              ➕ Nouvel espace
+            </button>
+          </div>
         </div>
         ${
-          state.data.spaces.length > 0
+          sortedSpaces.length > 0
             ? `
           <div class="crm-tree">
-            ${state.data.spaces
+            ${sortedSpaces
               .map(
                 (space) => `
                 <div class="crm-tree-item" data-id="${space.id}">
@@ -1113,6 +1256,13 @@
         }
       </div>
     `;
+  }
+
+  // === SPACES ===
+  async function loadSpaces() {
+    const result = await apiCall("/admin/spaces.php");
+    state.data.spaces = result.spaces || [];
+    renderSpacesTree();
   }
 
   async function toggleTreeItem(element) {
@@ -2089,6 +2239,7 @@
     viewUserRoles,
     deleteRoleFromView,
     deleteUser,
+    sortUsers,
 
     // Role assignment
     onSpaceChangeForRole,
@@ -2102,6 +2253,7 @@
     saveSpace,
     deleteSpace,
     toggleTreeItem,
+    sortSpaces,
 
     // Zones
     createZone,

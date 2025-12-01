@@ -212,23 +212,41 @@
         const user = localStorage.getItem(USER_KEY);
 
         if (token && user) {
-            const userData = JSON.parse(user);
-            showLoggedIn(userData);
+            try {
+                const userData = JSON.parse(user);
+                showLoggedIn(userData);
+            } catch (e) {
+                console.error('Erreur parsing user data:', e);
+                // Nettoyer les données corrompues
+                localStorage.removeItem(TOKEN_KEY);
+                localStorage.removeItem(USER_KEY);
+            }
         }
     }
 
     function showLoggedIn(user) {
+        // Vérifier que user existe et a les propriétés nécessaires
+        if (!user) {
+            console.error('showLoggedIn: user is undefined');
+            return;
+        }
+
         document.getElementById('login-form').style.display = 'none';
         document.getElementById('logged-in').style.display = 'block';
-        document.getElementById('user-name').textContent = `${user.first_name} ${user.last_name}`;
-        document.getElementById('user-email').textContent = user.email;
-        document.getElementById('user-role').textContent = user.global_role;
+        document.getElementById('user-name').textContent = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Utilisateur';
+        document.getElementById('user-email').textContent = user.email || '';
+        document.getElementById('user-role').textContent = user.global_role || 'user';
     }
 
     function showMessage(text, type) {
         const el = document.getElementById('message');
         el.textContent = text;
         el.className = `message ${type}`;
+    }
+
+    function hideMessage() {
+        const el = document.getElementById('message');
+        el.className = 'message';
     }
 
     async function handleLogin(e) {
@@ -240,6 +258,7 @@
 
         btn.disabled = true;
         btn.textContent = 'Connexion...';
+        hideMessage();
 
         try {
             const response = await fetch(`${API_BASE}/auth/login.php`, {
@@ -249,13 +268,24 @@
             });
 
             const result = await response.json();
+            console.log('Réponse API:', result); // Debug
 
             if (result.success) {
-                localStorage.setItem(TOKEN_KEY, result.token);
-                localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+                // ✅ CORRECTION: Accéder aux données via result.data
+                const token = result.data?.token || result.token;
+                const user = result.data?.user || result.user;
+
+                if (!token || !user) {
+                    console.error('Token ou user manquant dans la réponse:', result);
+                    showMessage('Erreur: réponse serveur invalide', 'error');
+                    return;
+                }
+
+                localStorage.setItem(TOKEN_KEY, token);
+                localStorage.setItem(USER_KEY, JSON.stringify(user));
                 
                 showMessage('Connexion réussie ! Redirection...', 'success');
-                showLoggedIn(result.user);
+                showLoggedIn(user);
 
                 // Redirect to CRM after 1 second
                 setTimeout(() => {
@@ -265,8 +295,8 @@
                 showMessage(result.error || 'Erreur de connexion', 'error');
             }
         } catch (error) {
+            console.error('Erreur fetch:', error);
             showMessage('Erreur de connexion au serveur', 'error');
-            console.error(error);
         }
 
         btn.disabled = false;

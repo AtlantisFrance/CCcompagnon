@@ -1,0 +1,29 @@
+# ============================================
+# 🔒 SÉCURITÉ API ATLANTIS
+# ============================================
+
+# Activer la réécriture d'URL
+RewriteEngine On
+
+# Forcer HTTPS
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Bloquer l'accès aux fichiers sensibles
+<FilesMatch "^(database|init)\.php$">
+    Require all denied
+</FilesMatch>
+
+# Bloquer l'accès au dossier config directement
+RewriteRule ^config/ - [F,L]
+
+# Headers de sécurité
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set X-XSS-Protection "1; mode=block"
+
+# Désactiver le listing des répertoires
+Options -Indexes
+
+# Protection contre les injections XSS
+# Limiter les méthodes HTTP autorisées

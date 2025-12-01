@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Atlantis City</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f1f5f9;
+        }
+        .login-container {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto 16px;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+        }
+        .login-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .login-header p {
+            color: #64748b;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            color: #f1f5f9;
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        .message.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            display: block;
+        }
+        .message.success {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            display: block;
+        }
+        .links {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #64748b;
+        }
+        .links a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        .links a:hover {
+            text-decoration: underline;
+        }
+        .user-info {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .user-info h3 {
+            color: #22c55e;
+            margin-bottom: 10px;
+        }
+        .user-info p {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .user-info .role {
+            display: inline-block;
+            background: rgba(168, 85, 247, 0.2);
+            color: #a855f7;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-container">
+    <div class="login-header">
+        <div class="login-logo">⚡</div>
+        <h1>Atlantis City</h1>
+        <p>Connexion au CRM</p>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <!-- Login Form -->
+    <div id="login-form">
+        <form onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-input" id="email" required placeholder="votre@email.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Mot de passe</label>
+                <input type="password" class="form-input" id="password" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn" id="submit-btn">Se connecter</button>
+        </form>
+    </div>
+
+    <!-- Logged In State -->
+    <div id="logged-in" style="display: none;">
+        <div class="user-info">
+            <h3>✅ Connecté</h3>
+            <p id="user-name"></p>
+            <p id="user-email"></p>
+            <span class="role" id="user-role"></span>
+        </div>
+        <a href="/crm/" class="btn" style="display: block; text-align: center; text-decoration: none; margin-bottom: 10px;">
+            🎛️ Accéder au CRM
+        </a>
+        <button class="btn" style="background: #334155;" onclick="handleLogout()">
+            🚪 Se déconnecter
+        </button>
+    </div>
+
+    <div class="links">
+        <a href="/crm/">Accéder directement au CRM</a>
+    </div>
+</div>
+
+<script>
+    const API_BASE = 'https://compagnon.atlantis-city.com/api';
+    const TOKEN_KEY = 'atlantis_auth_token';
+    const USER_KEY = 'atlantis_auth_user';
+
+    // Check if already logged in
+    function checkAuth() {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const user = localStorage.getItem(USER_KEY);
+
+        if (token && user) {
+            const userData = JSON.parse(user);
+            showLoggedIn(userData);
+        }
+    }
+
+    function showLoggedIn(user) {
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('logged-in').style.display = 'block';
+        document.getElementById('user-name').textContent = `${user.first_name} ${user.last_name}`;
+        document.getElementById('user-email').textContent = user.email;
+        document.getElementById('user-role').textContent = user.global_role;
+    }
+
+    function showMessage(text, type) {
+        const el = document.getElementById('message');
+        el.textContent = text;
+        el.className = `message ${type}`;
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('submit-btn');
+
+        btn.disabled = true;
+        btn.textContent = 'Connexion...';
+
+        try {
+            const response = await fetch(`${API_BASE}/auth/login.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                localStorage.setItem(TOKEN_KEY, result.token);
+                localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+                
+                showMessage('Connexion réussie ! Redirection...', 'success');
+                showLoggedIn(result.user);
+
+                // Redirect to CRM after 1 second
+                setTimeout(() => {
+                    window.location.href = '/crm/';
+                }, 1000);
+            } else {
+                showMessage(result.error || 'Erreur de connexion', 'error');
+            }
+        } catch (error) {
+            showMessage('Erreur de connexion au serveur', 'error');
+            console.error(error);
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Se connecter';
+    }
+
+    function handleLogout() {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        window.location.reload();
+    }
+
+    // Init
+    checkAuth();
+</script>
+
+</body>
+</html>

@@ -237,10 +237,10 @@
                     </div>
                 </div>
                 <div class="crm-stat-card">
-                    <div class="crm-stat-icon orange">⏳</div>
+                    <div class="crm-stat-icon red">🚫</div>
                     <div class="crm-stat-content">
-                        <h3>${result.users?.pending || 0}</h3>
-                        <p>En attente</p>
+                        <h3>${result.users?.suspended || 0}</h3>
+                        <p>Suspendus</p>
                     </div>
                 </div>
                 <div class="crm-stat-card">
@@ -262,24 +262,26 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
                 <div class="crm-card">
                     <div class="crm-card-header">
-                        <h3 class="crm-card-title">⏳ Utilisateurs en attente</h3>
+                        <h3 class="crm-card-title">👥 Derniers inscrits</h3>
                     </div>
                     ${
-                      result.pending_users && result.pending_users.length > 0
+                      result.recent_users && result.recent_users.length > 0
                         ? `
                         <div class="crm-table-wrapper">
                             <table class="crm-table">
-                                <thead><tr><th>Nom</th><th>Email</th><th>Actions</th></tr></thead>
+                                <thead><tr><th>Nom</th><th>Email</th><th>Inscrit le</th></tr></thead>
                                 <tbody>
-                                    ${result.pending_users
+                                    ${result.recent_users
                                       .map(
                                         (user) => `
                                         <tr>
-                                            <td>${user.first_name} ${user.last_name}</td>
+                                            <td>${user.first_name} ${
+                                          user.last_name
+                                        }</td>
                                             <td>${user.email}</td>
-                                            <td>
-                                                <button class="crm-btn crm-btn-sm crm-btn-primary" onclick="window.CRM.activateUser(${user.id})">Activer</button>
-                                            </td>
+                                            <td>${formatDate(
+                                              user.created_at
+                                            )}</td>
                                         </tr>
                                     `
                                       )
@@ -288,7 +290,7 @@
                             </table>
                         </div>
                     `
-                        : '<div class="crm-empty"><p>Aucun utilisateur en attente</p></div>'
+                        : '<div class="crm-empty"><p>Aucun utilisateur</p></div>'
                     }
                 </div>
 
@@ -358,9 +360,9 @@
                         <span class="crm-badge crm-badge-success">${
                           stats.active
                         } actifs</span>
-                        <span class="crm-badge crm-badge-warning">${
-                          stats.pending
-                        } en attente</span>
+                        <span class="crm-badge crm-badge-danger">${
+                          stats.suspended || 0
+                        } suspendus</span>
                     </div>
                 </div>
                 <div class="crm-table-wrapper">
@@ -417,18 +419,13 @@
                                               user.id
                                             })" title="Modifier & Rôles">✏️</button>
                                             ${
-                                              user.status === "pending"
-                                                ? `
-                                                <button class="crm-btn crm-btn-sm crm-btn-primary crm-btn-icon" onclick="window.CRM.activateUser(${user.id})" title="Activer">✅</button>
-                                            `
-                                                : ""
-                                            }
-                                            ${
                                               user.status === "active"
                                                 ? `
                                                 <button class="crm-btn crm-btn-sm crm-btn-warning crm-btn-icon" onclick="window.CRM.suspendUser(${user.id})" title="Suspendre">🚫</button>
                                             `
-                                                : ""
+                                                : `
+                                                <button class="crm-btn crm-btn-sm crm-btn-primary crm-btn-icon" onclick="window.CRM.reactivateUser(${user.id})" title="Réactiver">✅</button>
+                                            `
                                             }
                                             <button class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.deleteUser(${
                                               user.id
@@ -505,9 +502,6 @@
                         <div class="crm-form-group">
                             <label class="crm-form-label">Statut</label>
                             <select class="crm-form-select" name="status">
-                                <option value="pending" ${
-                                  user.status === "pending" ? "selected" : ""
-                                }>En attente</option>
                                 <option value="active" ${
                                   user.status === "active" ? "selected" : ""
                                 }>Actif</option>
@@ -605,7 +599,6 @@
                         <div style="flex: 1; min-width: 120px;">
                             <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Type</label>
                             <select class="crm-form-select" id="new-role-type" style="padding: 8px;">
-                                <option value="viewer">Viewer</option>
                                 <option value="zone_admin">Zone Admin</option>
                                 <option value="space_admin">Space Admin</option>
                             </select>
@@ -741,13 +734,13 @@
     }
   }
 
-  async function activateUser(userId) {
+  async function reactivateUser(userId) {
     try {
       await apiCall("/admin/users.php", "PUT", {
         id: userId,
         status: "active",
       });
-      showToast("Utilisateur activé", "success");
+      showToast("Utilisateur réactivé", "success");
       loadSectionData(state.currentSection);
     } catch (error) {
       showToast(error.message, "error");
@@ -1421,7 +1414,7 @@
     // Users
     editUser,
     saveUser,
-    activateUser,
+    reactivateUser,
     suspendUser,
     deleteUser,
     addUserRole,

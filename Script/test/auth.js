@@ -138,8 +138,7 @@
       return {
         success: true,
         message:
-          result.data?.message ||
-          "Compte créé ! En attente de validation par un administrateur.",
+          "Compte créé avec succès ! Vous pouvez maintenant vous connecter.",
       };
     }
 
@@ -299,7 +298,7 @@
            </div>
            <div class="auth-input-group">
              <label class="auth-label">Mot de passe</label>
-             <input type="password" class="auth-input" name="password" placeholder="8 caractères minimum" minlength="8" required>
+             <input type="password" class="auth-input" name="password" placeholder="6 caractères minimum" minlength="6" required>
            </div>
            <button type="submit" class="auth-submit">Créer mon compte</button>
          </form>
@@ -404,6 +403,10 @@
     if (result.success) {
       showMessage(result.message, "success");
       form.reset();
+      // Basculer vers l'onglet connexion après 2 secondes
+      setTimeout(() => {
+        switchTab("login");
+      }, 2000);
     } else {
       showMessage(result.error, "error");
     }
@@ -551,7 +554,7 @@
     },
     openAdmin: () => {
       closeUserMenu();
-      window.open("https://compagnon.atlantis-city.com/admin/", "_blank");
+      window.open("https://compagnon.atlantis-city.com/crm/", "_blank");
     },
     refresh: checkAuth,
   };

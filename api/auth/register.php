@@ -92,7 +92,7 @@ try {
         ':first_name' => $firstName,
         ':last_name' => $lastName,
         ':company' => $company,
-        ':status' => 'pending',
+        'status' => 'active'
         ':verification_token' => $verificationToken
     ]);
     

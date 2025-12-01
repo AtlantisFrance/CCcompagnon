@@ -420,35 +420,6 @@ a:hover {
   background: var(--bg-tertiary);
 }
 
-/* Colonnes triables */
-.crm-table th.sortable {
-  cursor: pointer;
-  user-select: none;
-  transition: all 0.2s ease;
-}
-
-.crm-table th.sortable:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.crm-table th.sortable .sort-icon {
-  margin-left: 6px;
-  font-size: 10px;
-  color: var(--text-muted);
-  opacity: 0.5;
-  transition: all 0.2s ease;
-}
-
-.crm-table th.sortable:hover .sort-icon {
-  opacity: 1;
-}
-
-.crm-table th.sortable .sort-icon.active {
-  color: var(--accent-primary);
-  opacity: 1;
-}
-
 .crm-table tbody tr {
   transition: background 0.2s ease;
 }
@@ -924,6 +895,17 @@ a:hover {
 
 .crm-tree-child:hover {
   background: var(--bg-hover);
+}
+
+/* === SORT ICONS === */
+.sort-icon {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.sort-icon.active {
+  color: var(--accent-primary);
 }
 
 /* === RESPONSIVE === */

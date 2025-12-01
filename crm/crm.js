@@ -44,13 +44,6 @@
     }
   }
 
-  function setAuth(token, user) {
-    localStorage.setItem(CONFIG.TOKEN_KEY, token);
-    localStorage.setItem(CONFIG.USER_KEY, JSON.stringify(user));
-    state.token = token;
-    state.user = user;
-  }
-
   function clearAuth() {
     localStorage.removeItem(CONFIG.TOKEN_KEY);
     localStorage.removeItem(CONFIG.USER_KEY);
@@ -406,7 +399,11 @@
                                             ? "crm-badge-purple"
                                             : "crm-badge-info"
                                         }">
-                                            ${user.global_role}
+                                            ${
+                                              user.global_role === "super_admin"
+                                                ? "🔑 Super Admin"
+                                                : "user"
+                                            }
                                         </span>
                                     </td>
                                     <td>
@@ -418,9 +415,7 @@
                                         <div style="display: flex; gap: 6px;">
                                             <button class="crm-btn crm-btn-sm crm-btn-secondary crm-btn-icon" onclick="window.CRM.editUser(${
                                               user.id
-                                            })" title="Modifier & Rôles">
-                                                ✏️
-                                            </button>
+                                            })" title="Modifier & Rôles">✏️</button>
                                             ${
                                               user.status === "pending"
                                                 ? `
@@ -452,30 +447,40 @@
   }
 
   async function editUser(userId) {
-    // Charger user, ses rôles, et les espaces/zones disponibles
-    const [userRes, rolesRes, spacesRes] = await Promise.all([
+    // Charger user et les espaces/zones disponibles
+    const [userRes, spacesRes, zonesRes] = await Promise.all([
       apiCall(`/admin/users.php?id=${userId}`),
-      apiCall(`/admin/roles.php?user_id=${userId}`),
       apiCall("/admin/spaces.php"),
+      apiCall("/admin/zones.php"),
     ]);
 
     const user = userRes.user || userRes;
-    const userRoles = rolesRes.roles || [];
     const spaces = spacesRes.spaces || [];
-
-    // Charger toutes les zones
-    const zonesRes = await apiCall("/admin/zones.php");
     const allZones = zonesRes.zones || [];
+
+    // Charger les rôles de cet utilisateur
+    let userRoles = [];
+    try {
+      const rolesRes = await apiCall(`/admin/roles.php?user_id=${userId}`);
+      userRoles = rolesRes.roles || [];
+    } catch (e) {
+      console.log("Pas de rôles pour cet utilisateur");
+    }
+
+    // Stocker les zones pour les charger dynamiquement
+    window._allZones = allZones;
+    window._currentUserId = userId;
+
+    const isSuperAdmin = user.global_role === "super_admin";
 
     openModal(
       "✏️ Modifier l'utilisateur",
       `
-            <form id="edit-user-form">
-                <input type="hidden" name="id" value="${user.id}">
-                
-                <!-- Infos de base -->
-                <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 10px; margin-bottom: 20px;">
-                    <h4 style="margin-bottom: 12px; color: var(--text-secondary);">📋 Informations</h4>
+            <!-- Infos de base -->
+            <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 10px; margin-bottom: 20px;">
+                <h4 style="margin-bottom: 12px; color: var(--text-secondary);">📋 Informations</h4>
+                <form id="edit-user-form">
+                    <input type="hidden" name="id" value="${user.id}">
                     <div class="crm-form-row">
                         <div class="crm-form-group">
                             <label class="crm-form-label">Prénom</label>
@@ -513,7 +518,7 @@
                         </div>
                         <div class="crm-form-group">
                             <label class="crm-form-label">Rôle global</label>
-                            <select class="crm-form-select" name="global_role">
+                            <select class="crm-form-select" name="global_role" onchange="window.CRM.toggleRolesSection(this.value)">
                                 <option value="user" ${
                                   user.global_role === "user" ? "selected" : ""
                                 }>Utilisateur</option>
@@ -525,105 +530,128 @@
                             </select>
                         </div>
                     </div>
-                </div>
-
-                <!-- Rôles par espace/zone -->
-                <div style="background: var(--bg-tertiary); padding: 16px; border-radius: 10px; margin-bottom: 20px;">
-                    <h4 style="margin-bottom: 12px; color: var(--text-secondary);">🎭 Rôles par Espace/Zone</h4>
-                    
-                    <!-- Liste des rôles existants -->
-                    <div id="user-roles-list" style="margin-bottom: 16px;">
-                        ${
-                          userRoles.length > 0
-                            ? userRoles
-                                .map(
-                                  (role) => `
-                            <div class="user-role-item" style="display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px;">
-                                <span class="crm-badge crm-badge-primary">${
-                                  role.space_name
-                                }</span>
-                                ${
-                                  role.zone_name
-                                    ? `<span class="crm-badge crm-badge-info">${role.zone_name}</span>`
-                                    : '<span style="color: var(--text-muted);">Tout l\'espace</span>'
-                                }
-                                <span class="crm-badge ${getRoleBadge(
-                                  role.role
-                                )}">${role.role}</span>
-                                <button type="button" class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.removeUserRole(${
-                                  role.id
-                                }, this)" style="margin-left: auto;">✖</button>
-                            </div>
-                        `
-                                )
-                                .join("")
-                            : '<p style="color: var(--text-muted); font-size: 13px;">Aucun rôle assigné</p>'
-                        }
+                    <div class="crm-form-group">
+                        <label class="crm-form-label">Notes admin</label>
+                        <textarea class="crm-form-textarea" name="admin_notes" style="min-height: 60px;">${
+                          user.admin_notes || ""
+                        }</textarea>
                     </div>
-                    
-                    <!-- Ajouter un nouveau rôle -->
-                    <div style="border-top: 1px solid var(--border-color); padding-top: 16px;">
-                        <h5 style="margin-bottom: 10px; font-size: 13px; color: var(--text-muted);">➕ Ajouter un rôle</h5>
-                        <div class="crm-form-row" style="gap: 10px;">
-                            <div class="crm-form-group" style="margin-bottom: 0;">
-                                <select class="crm-form-select" id="new-role-space" onchange="window.CRM.loadZonesForSpace(this.value)">
-                                    <option value="">Espace...</option>
-                                    ${spaces
-                                      .map(
-                                        (s) =>
-                                          `<option value="${s.id}">${s.name}</option>`
-                                      )
-                                      .join("")}
-                                </select>
-                            </div>
-                            <div class="crm-form-group" style="margin-bottom: 0;">
-                                <select class="crm-form-select" id="new-role-zone">
-                                    <option value="">Tout l'espace</option>
-                                </select>
-                            </div>
-                            <div class="crm-form-group" style="margin-bottom: 0;">
-                                <select class="crm-form-select" id="new-role-type">
-                                    <option value="viewer">Viewer</option>
-                                    <option value="zone_admin">Zone Admin</option>
-                                    <option value="space_admin">Space Admin</option>
-                                </select>
-                            </div>
-                            <button type="button" class="crm-btn crm-btn-primary crm-btn-sm" onclick="window.CRM.addUserRole(${
-                              user.id
-                            })">
-                                ➕
-                            </button>
+                </form>
+            </div>
+
+            <!-- Rôles par espace/zone - CACHÉ SI SUPER ADMIN -->
+            <div id="roles-section" style="background: var(--bg-tertiary); padding: 16px; border-radius: 10px; ${
+              isSuperAdmin ? "display: none;" : ""
+            }">
+                <h4 style="margin-bottom: 12px; color: var(--text-secondary);">🎭 Rôles par Espace/Zone</h4>
+                <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                    Assignez des permissions spécifiques pour chaque espace ou zone.
+                </p>
+                
+                <!-- Liste des rôles existants -->
+                <div id="user-roles-list" style="margin-bottom: 16px;">
+                    ${
+                      userRoles.length > 0
+                        ? userRoles
+                            .map(
+                              (role) => `
+                        <div class="user-role-item" data-role-id="${
+                          role.id
+                        }" style="display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px;">
+                            <span class="crm-badge crm-badge-primary">${
+                              role.space_name
+                            }</span>
+                            ${
+                              role.zone_name
+                                ? `<span class="crm-badge crm-badge-info">${role.zone_name}</span>`
+                                : '<span style="color: var(--text-muted); font-size: 12px;">Tout l\'espace</span>'
+                            }
+                            <span class="crm-badge ${getRoleBadge(
+                              role.role
+                            )}">${role.role}</span>
+                            <button type="button" class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.removeUserRole(${
+                              role.id
+                            })" style="margin-left: auto;">✖</button>
                         </div>
+                    `
+                            )
+                            .join("")
+                        : '<p id="no-roles-msg" style="color: var(--text-muted); font-size: 13px;">Aucun rôle assigné</p>'
+                    }
+                </div>
+                
+                <!-- Ajouter un nouveau rôle -->
+                <div style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <h5 style="margin-bottom: 10px; font-size: 13px; color: var(--text-muted);">➕ Ajouter un rôle</h5>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+                        <div style="flex: 1; min-width: 120px;">
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Espace</label>
+                            <select class="crm-form-select" id="new-role-space" onchange="window.CRM.loadZonesForSpace(this.value)" style="padding: 8px;">
+                                <option value="">Choisir...</option>
+                                ${spaces
+                                  .map(
+                                    (s) =>
+                                      `<option value="${s.id}">${s.name}</option>`
+                                  )
+                                  .join("")}
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 120px;">
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Zone (optionnel)</label>
+                            <select class="crm-form-select" id="new-role-zone" style="padding: 8px;">
+                                <option value="">Tout l'espace</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 120px;">
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Type</label>
+                            <select class="crm-form-select" id="new-role-type" style="padding: 8px;">
+                                <option value="viewer">Viewer</option>
+                                <option value="zone_admin">Zone Admin</option>
+                                <option value="space_admin">Space Admin</option>
+                            </select>
+                        </div>
+                        <button type="button" class="crm-btn crm-btn-primary" onclick="window.CRM.addUserRole()" style="padding: 8px 16px;">
+                            ➕ Ajouter
+                        </button>
                     </div>
                 </div>
-
-                <!-- Notes admin -->
-                <div class="crm-form-group">
-                    <label class="crm-form-label">Notes admin</label>
-                    <textarea class="crm-form-textarea" name="admin_notes" style="min-height: 60px;">${
-                      user.admin_notes || ""
-                    }</textarea>
+            </div>
+            
+            ${
+              isSuperAdmin
+                ? `
+                <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); padding: 12px; border-radius: 8px; text-align: center;">
+                    <span style="color: #a855f7;">🔑 Super Admin = Accès total à tous les espaces et zones</span>
                 </div>
-            </form>
+            `
+                : ""
+            }
         `,
       `
             <button class="crm-btn crm-btn-secondary" onclick="window.CRM.closeModal()">Fermer</button>
-            <button class="crm-btn crm-btn-primary" onclick="window.CRM.saveUser()">Enregistrer</button>
+            <button class="crm-btn crm-btn-primary" onclick="window.CRM.saveUser()">💾 Enregistrer infos</button>
         `
     );
+  }
 
-    // Stocker les zones pour les charger dynamiquement
-    window._allZones = allZones;
+  function toggleRolesSection(globalRole) {
+    const rolesSection = document.getElementById("roles-section");
+    if (rolesSection) {
+      rolesSection.style.display =
+        globalRole === "super_admin" ? "none" : "block";
+    }
   }
 
   function loadZonesForSpace(spaceId) {
     const select = document.getElementById("new-role-zone");
+    if (!select) return;
+
     if (!spaceId) {
       select.innerHTML = '<option value="">Tout l\'espace</option>';
       return;
     }
 
-    const zones = window._allZones.filter((z) => z.space_id == spaceId);
+    const zones = (window._allZones || []).filter((z) => z.space_id == spaceId);
     select.innerHTML = `
             <option value="">Tout l'espace</option>
             ${zones
@@ -632,35 +660,64 @@
         `;
   }
 
-  async function addUserRole(userId) {
-    const spaceId = document.getElementById("new-role-space").value;
-    const zoneId = document.getElementById("new-role-zone").value;
-    const role = document.getElementById("new-role-type").value;
+  async function addUserRole() {
+    const userId = window._currentUserId;
+    const spaceSelect = document.getElementById("new-role-space");
+    const zoneSelect = document.getElementById("new-role-zone");
+    const roleSelect = document.getElementById("new-role-type");
+
+    if (!spaceSelect || !roleSelect) return;
+
+    const spaceId = spaceSelect.value;
+    const zoneId = zoneSelect ? zoneSelect.value : "";
+    const role = roleSelect.value;
 
     if (!spaceId) {
       showToast("Sélectionnez un espace", "warning");
       return;
     }
 
+    if (!userId) {
+      showToast("Erreur: utilisateur non défini", "error");
+      return;
+    }
+
     try {
-      const data = { user_id: userId, space_id: spaceId, role };
-      if (zoneId) data.zone_id = zoneId;
+      const data = {
+        user_id: parseInt(userId),
+        space_id: parseInt(spaceId),
+        role: role,
+      };
+      if (zoneId) {
+        data.zone_id = parseInt(zoneId);
+      }
 
+      console.log("Adding role:", data);
       await apiCall("/admin/roles.php", "POST", data);
-      showToast("Rôle ajouté", "success");
+      showToast("Rôle ajouté !", "success");
 
-      // Recharger le modal
-      closeModal();
+      // Recharger le modal pour voir le nouveau rôle
       editUser(userId);
     } catch (error) {
       showToast(error.message, "error");
     }
   }
 
-  async function removeUserRole(roleId, btn) {
+  async function removeUserRole(roleId) {
     try {
       await apiCall(`/admin/roles.php?id=${roleId}`, "DELETE");
-      btn.closest(".user-role-item").remove();
+
+      // Supprimer visuellement
+      const item = document.querySelector(`[data-role-id="${roleId}"]`);
+      if (item) item.remove();
+
+      // Vérifier s'il reste des rôles
+      const list = document.getElementById("user-roles-list");
+      if (list && list.querySelectorAll(".user-role-item").length === 0) {
+        list.innerHTML =
+          '<p id="no-roles-msg" style="color: var(--text-muted); font-size: 13px;">Aucun rôle assigné</p>';
+      }
+
       showToast("Rôle supprimé", "success");
     } catch (error) {
       showToast(error.message, "error");
@@ -669,6 +726,8 @@
 
   async function saveUser() {
     const form = document.getElementById("edit-user-form");
+    if (!form) return;
+
     const formData = new FormData(form);
     const data = Object.fromEntries(formData);
 
@@ -729,8 +788,22 @@
 
   // === SPACES ===
   async function loadSpaces() {
-    const result = await apiCall("/admin/spaces.php");
-    state.data.spaces = result.spaces || [];
+    const [spacesRes, rolesRes] = await Promise.all([
+      apiCall("/admin/spaces.php"),
+      apiCall("/admin/roles.php"),
+    ]);
+
+    state.data.spaces = spacesRes.spaces || [];
+    const allRoles = rolesRes.roles || [];
+
+    // Grouper les rôles par space_id
+    const rolesBySpace = {};
+    allRoles.forEach((role) => {
+      if (!rolesBySpace[role.space_id]) {
+        rolesBySpace[role.space_id] = [];
+      }
+      rolesBySpace[role.space_id].push(role);
+    });
 
     const el = document.querySelector("#section-spaces .crm-section-content");
     el.innerHTML = `
@@ -746,8 +819,14 @@
                     ? `
                 <div class="crm-tree">
                     ${state.data.spaces
-                      .map(
-                        (space) => `
+                      .map((space) => {
+                        const spaceRoles = rolesBySpace[space.id] || [];
+                        const admins = spaceRoles.filter(
+                          (r) =>
+                            r.role === "space_admin" || r.role === "zone_admin"
+                        );
+
+                        return `
                         <div class="crm-tree-item" data-id="${space.id}">
                             <div class="crm-tree-header" onclick="window.CRM.toggleTreeItem(this.parentElement)">
                                 <span class="crm-tree-toggle">▶</span>
@@ -761,6 +840,34 @@
                           space.zone_count || 0
                         } zones
                                     </div>
+                                    ${
+                                      admins.length > 0
+                                        ? `
+                                        <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                                            ${admins
+                                              .map(
+                                                (a) => `
+                                                <span style="font-size: 10px; background: var(--bg-hover); padding: 2px 6px; border-radius: 4px;">
+                                                    👤 ${a.first_name} ${
+                                                  a.last_name
+                                                } 
+                                                    <span style="color: ${
+                                                      a.role === "space_admin"
+                                                        ? "#a855f7"
+                                                        : "#06b6d4"
+                                                    };">(${a.role}${
+                                                  a.zone_name
+                                                    ? ` - ${a.zone_name}`
+                                                    : ""
+                                                })</span>
+                                                </span>
+                                            `
+                                              )
+                                              .join("")}
+                                        </div>
+                                    `
+                                        : ""
+                                    }
                                 </div>
                                 <span class="crm-badge ${
                                   space.is_active
@@ -787,8 +894,8 @@
                                 <div class="crm-loading"><div class="crm-spinner"></div></div>
                             </div>
                         </div>
-                    `
-                      )
+                    `;
+                      })
                       .join("")}
                 </div>
                 `
@@ -806,32 +913,74 @@
       const zonesEl = document.getElementById(`zones-${spaceId}`);
 
       try {
-        const result = await apiCall(`/admin/zones.php?space_id=${spaceId}`);
-        const zones = result.zones || [];
+        const [zonesRes, rolesRes] = await Promise.all([
+          apiCall(`/admin/zones.php?space_id=${spaceId}`),
+          apiCall(`/admin/roles.php?space_id=${spaceId}`),
+        ]);
+
+        const zones = zonesRes.zones || [];
+        const roles = rolesRes.roles || [];
+
+        // Grouper les rôles par zone_id
+        const rolesByZone = {};
+        roles.forEach((role) => {
+          if (role.zone_id) {
+            if (!rolesByZone[role.zone_id]) {
+              rolesByZone[role.zone_id] = [];
+            }
+            rolesByZone[role.zone_id].push(role);
+          }
+        });
 
         if (zones.length > 0) {
           zonesEl.innerHTML = zones
-            .map(
-              (zone) => `
+            .map((zone) => {
+              const zoneRoles = rolesByZone[zone.id] || [];
+              return `
                         <div class="crm-tree-child">
-                            <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
                                 <span>📍</span>
                                 <div>
-                                    <div style="font-weight: 500;">${zone.name}</div>
-                                    <div style="font-size: 12px; color: var(--text-muted);">${zone.slug}</div>
+                                    <div style="font-weight: 500;">${
+                                      zone.name
+                                    }</div>
+                                    <div style="font-size: 12px; color: var(--text-muted);">${
+                                      zone.slug
+                                    }</div>
+                                    ${
+                                      zoneRoles.length > 0
+                                        ? `
+                                        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">
+                                            ${zoneRoles
+                                              .map(
+                                                (r) => `
+                                                <span style="font-size: 10px; background: var(--bg-primary); padding: 2px 6px; border-radius: 4px;">
+                                                    👤 ${r.first_name} (${r.role})
+                                                </span>
+                                            `
+                                              )
+                                              .join("")}
+                                        </div>
+                                    `
+                                        : ""
+                                    }
                                 </div>
                             </div>
                             <div style="display: flex; gap: 6px;">
-                                <button class="crm-btn crm-btn-sm crm-btn-secondary crm-btn-icon" onclick="window.CRM.editZone(${zone.id})" title="Modifier">✏️</button>
-                                <button class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.deleteZone(${zone.id})" title="Supprimer">🗑️</button>
+                                <button class="crm-btn crm-btn-sm crm-btn-secondary crm-btn-icon" onclick="window.CRM.editZone(${
+                                  zone.id
+                                })" title="Modifier">✏️</button>
+                                <button class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.deleteZone(${
+                                  zone.id
+                                })" title="Supprimer">🗑️</button>
                             </div>
                         </div>
-                    `
-            )
+                    `;
+            })
             .join("");
         } else {
           zonesEl.innerHTML =
-            '<div class="crm-tree-child" style="color: var(--text-muted);">Aucune zone</div>';
+            '<div class="crm-tree-child" style="color: var(--text-muted);">Aucune zone - Cliquez sur ➕ pour en créer</div>';
         }
       } catch (error) {
         zonesEl.innerHTML =
@@ -1278,6 +1427,7 @@
     addUserRole,
     removeUserRole,
     loadZonesForSpace,
+    toggleRolesSection,
     // Spaces
     createSpace,
     saveNewSpace,

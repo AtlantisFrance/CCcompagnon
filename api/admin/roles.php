@@ -91,6 +91,11 @@ try {
             $role = getRequired($data, 'role');
             $zoneId = getOptional($data, 'zone_id'); // NULL = tout l'espace
 
+            // Convertir en int si présent
+            $userId = (int)$userId;
+            $spaceId = (int)$spaceId;
+            $zoneId = $zoneId ? (int)$zoneId : null;
+
             // Valider le rôle
             if (!in_array($role, ['viewer', 'zone_admin', 'space_admin'])) {
                 errorResponse('Rôle invalide. Valeurs acceptées: viewer, zone_admin, space_admin', 400);
@@ -113,6 +118,7 @@ try {
             }
 
             // Si zone_id fourni, vérifier qu'elle existe et appartient à l'espace
+            $zone = null;
             if ($zoneId) {
                 $stmt = $db->prepare("SELECT id, name FROM zones WHERE id = :id AND space_id = :space_id");
                 $stmt->execute([':id' => $zoneId, ':space_id' => $spaceId]);
@@ -132,14 +138,23 @@ try {
                 errorResponse('Un zone_admin doit être assigné à une zone spécifique', 400);
             }
 
-            // Vérifier si le rôle existe déjà
-            $stmt = $db->prepare("
-                SELECT id FROM user_space_roles 
-                WHERE user_id = :user_id AND space_id = :space_id AND (zone_id = :zone_id OR (zone_id IS NULL AND :zone_id IS NULL))
-            ");
-            $stmt->execute([':user_id' => $userId, ':space_id' => $spaceId, ':zone_id' => $zoneId]);
+            // Vérifier si le rôle existe déjà (gestion correcte de NULL)
+            if ($zoneId) {
+                $stmt = $db->prepare("
+                    SELECT id FROM user_space_roles 
+                    WHERE user_id = :user_id AND space_id = :space_id AND zone_id = :zone_id
+                ");
+                $stmt->execute([':user_id' => $userId, ':space_id' => $spaceId, ':zone_id' => $zoneId]);
+            } else {
+                $stmt = $db->prepare("
+                    SELECT id FROM user_space_roles 
+                    WHERE user_id = :user_id AND space_id = :space_id AND zone_id IS NULL
+                ");
+                $stmt->execute([':user_id' => $userId, ':space_id' => $spaceId]);
+            }
+            
             if ($stmt->fetch()) {
-                errorResponse('Ce rôle existe déjà pour cet utilisateur', 409);
+                errorResponse('Ce rôle existe déjà pour cet utilisateur dans cet espace/zone', 409);
             }
 
             // Créer le rôle
@@ -165,7 +180,10 @@ try {
                 'role' => $role
             ]);
 
-            successResponse(['role_id' => (int)$roleId, 'message' => 'Rôle assigné']);
+            successResponse([
+                'role_id' => (int)$roleId, 
+                'message' => 'Rôle assigné avec succès'
+            ]);
             break;
 
         // ============================================
@@ -176,7 +194,7 @@ try {
                 errorResponse('ID rôle requis', 400);
             }
 
-            $roleId = $_GET['id'];
+            $roleId = (int)$_GET['id'];
 
             // Vérifier que le rôle existe
             $stmt = $db->prepare("
@@ -212,5 +230,5 @@ try {
 
 } catch (PDOException $e) {
     error_log("Erreur admin/roles: " . $e->getMessage());
-    errorResponse('Erreur serveur', 500);
+    errorResponse('Erreur serveur: ' . $e->getMessage(), 500);
 }

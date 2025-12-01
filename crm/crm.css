@@ -978,15 +978,17 @@ a:hover {
   visibility: hidden;
   transform: translateY(-10px) scale(0.95);
   transform-origin: top right;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 9999;
   overflow: hidden;
+  /* Pas de transition = fermeture instantanée */
 }
 
 .user-dropdown.open {
   opacity: 1;
   visibility: visible;
   transform: translateY(0) scale(1);
+  /* Transition uniquement à l'ouverture */
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Contenu du dropdown */

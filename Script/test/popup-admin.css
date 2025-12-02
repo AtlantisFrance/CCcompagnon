@@ -1,0 +1,131 @@
+/**
+ * ============================================
+ * 🔧 POPUP ADMIN - STYLES
+ * Toolbar d'administration
+ * ============================================
+ */
+
+/* === TOOLBAR === */
+.popup-admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.1) 0%,
+    rgba(139, 92, 246, 0.1) 100%
+  );
+  animation: toolbarSlideIn 0.3s ease;
+}
+
+@keyframes toolbarSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* === INFO (badge + role) === */
+.popup-admin-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.popup-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.popup-admin-role {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* === ACTIONS === */
+.popup-admin-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.popup-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.popup-admin-btn-upload {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+}
+
+.popup-admin-btn-upload:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+.popup-admin-btn-content {
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.popup-admin-btn-content:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: #f1f5f9;
+}
+
+.popup-admin-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 640px) {
+  .popup-admin-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .popup-admin-info {
+    justify-content: center;
+  }
+
+  .popup-admin-actions {
+    flex-direction: column;
+  }
+
+  .popup-admin-btn {
+    justify-content: center;
+    padding: 12px 16px;
+  }
+}

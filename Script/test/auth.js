@@ -272,11 +272,11 @@
          <!-- Login Form -->
          <form class="auth-form active" id="auth-login-form">
            <div class="auth-input-group">
-             <label class="auth-label">Email</label>
+             <label class="auth-label" for="login-email">Email</label>
              <input type="email" class="auth-input" id="login-email" placeholder="votre@email.com" required>
            </div>
            <div class="auth-input-group">
-             <label class="auth-label">Mot de passe</label>
+             <label class="auth-label" for="login-password">Mot de passe</label>
              <input type="password" class="auth-input" id="login-password" placeholder="••••••••" required>
            </div>
            <button type="submit" class="auth-submit">Se connecter</button>
@@ -286,24 +286,24 @@
          <form class="auth-form" id="auth-register-form">
            <div class="auth-input-row">
              <div class="auth-input-group">
-               <label class="auth-label">Prénom</label>
+               <label class="auth-label" for="register-first-name">Prénom</label>
                <input type="text" class="auth-input" id="register-first-name" placeholder="Jean" required>
              </div>
              <div class="auth-input-group">
-               <label class="auth-label">Nom</label>
+               <label class="auth-label" for="register-last-name">Nom</label>
                <input type="text" class="auth-input" id="register-last-name" placeholder="Dupont" required>
              </div>
            </div>
            <div class="auth-input-group">
-             <label class="auth-label">Email</label>
+             <label class="auth-label" for="register-email">Email</label>
              <input type="email" class="auth-input" id="register-email" placeholder="votre@email.com" required>
            </div>
            <div class="auth-input-group">
-             <label class="auth-label">Société (optionnel)</label>
+             <label class="auth-label" for="register-company">Société (optionnel)</label>
              <input type="text" class="auth-input" id="register-company" placeholder="Ma Société">
            </div>
            <div class="auth-input-group">
-             <label class="auth-label">Mot de passe</label>
+             <label class="auth-label" for="register-password">Mot de passe</label>
              <input type="password" class="auth-input" id="register-password" placeholder="6 caractères minimum" minlength="6" required>
            </div>
            <button type="submit" class="auth-submit">Créer mon compte</button>

@@ -1,0 +1,297 @@
+/**
+ * ============================================
+ * 📤 POPUP UPLOAD - STYLES
+ * Vue d'upload d'images PLV
+ * ============================================
+ */
+
+/* === CONTAINER VUE === */
+.popup-upload-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* === INFOS FORMAT === */
+.popup-upload-info {
+  display: flex;
+  gap: 20px;
+  padding: 16px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+}
+
+.popup-upload-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.popup-upload-info-item .label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+
+.popup-upload-info-item .value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+/* === IMAGE ACTUELLE === */
+.popup-upload-current h4,
+.popup-upload-preview h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin: 0 0 10px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.popup-upload-current-image {
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.popup-upload-current-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+/* === DROPZONE === */
+.popup-upload-dropzone {
+  border: 2px dashed rgba(99, 179, 237, 0.4);
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.popup-upload-dropzone:hover {
+  border-color: rgba(99, 179, 237, 0.7);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.popup-upload-dropzone.dragover {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  transform: scale(1.02);
+}
+
+.popup-upload-dropzone-content .icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 16px;
+  opacity: 0.7;
+}
+
+.popup-upload-dropzone-content .main {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0 0 8px 0;
+}
+
+.popup-upload-dropzone-content .hint {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* === PREVIEW NOUVELLE IMAGE === */
+.popup-upload-preview {
+  animation: previewFadeIn 0.3s ease;
+}
+
+@keyframes previewFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.popup-upload-preview-container {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(34, 197, 94, 0.1) 0%,
+    rgba(16, 185, 129, 0.1) 100%
+  );
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.popup-upload-preview-container img {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-height: 250px;
+  object-fit: contain;
+}
+
+.popup-upload-preview-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.9);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.popup-upload-preview-remove:hover {
+  background: #ef4444;
+  transform: scale(1.1);
+}
+
+.popup-upload-preview-info {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #94a3b8;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* === STATUS MESSAGES === */
+.popup-upload-status {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  animation: statusFadeIn 0.3s ease;
+}
+
+@keyframes statusFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.popup-upload-status .icon {
+  font-size: 18px;
+}
+
+.popup-upload-status.loading {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+.popup-upload-status.success {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.popup-upload-status.error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+/* === ACTIONS === */
+.popup-upload-actions {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+}
+
+.popup-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.popup-upload-btn-submit {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+  min-width: 200px;
+}
+
+.popup-upload-btn-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.popup-upload-btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* État succès du bouton */
+.popup-upload-btn-submit.success {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+}
+
+.popup-upload-btn-submit.success:hover {
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 640px) {
+  .popup-upload-info {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .popup-upload-dropzone {
+    padding: 30px 16px;
+  }
+
+  .popup-upload-dropzone-content .icon {
+    font-size: 36px;
+  }
+
+  .popup-upload-dropzone-content .main {
+    font-size: 14px;
+  }
+
+  .popup-upload-btn-submit {
+    width: 100%;
+  }
+}

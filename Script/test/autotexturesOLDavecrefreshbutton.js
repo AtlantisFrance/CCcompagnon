@@ -19,6 +19,92 @@
     opaqueList: ["c1_shdr", "l1_shdr", "p1_shdr"],
   };
 
+  let isLoading = false;
+
+  function createReloadButton() {
+    const button = document.createElement("button");
+    button.id = "reload-textures-btn";
+    button.innerHTML = "🔄 Actualiser PLV";
+    button.title = "Recharger les textures depuis le serveur";
+
+    button.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10000;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: "Segoe UI", Roboto, sans-serif;
+      color: white;
+      background: linear-gradient(135deg, #376ab3 0%, #2a5694 100%);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 25px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    `;
+
+    button.addEventListener("mouseenter", () => {
+      if (!isLoading) {
+        button.style.transform = "translateX(-50%) translateY(-2px)";
+        button.style.boxShadow = "0 6px 20px rgba(55, 106, 179, 0.5)";
+      }
+    });
+
+    button.addEventListener("mouseleave", () => {
+      if (!isLoading) {
+        button.style.transform = "translateX(-50%)";
+        button.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.3)";
+      }
+    });
+
+    button.addEventListener("click", () => {
+      if (!isLoading) {
+        loadAllTextures();
+      }
+    });
+
+    document.body.appendChild(button);
+    console.log("🔘 Bouton rechargement PLV créé");
+  }
+
+  function updateButtonState(loading, success = null) {
+    const button = document.getElementById("reload-textures-btn");
+    if (!button) return;
+
+    isLoading = loading;
+
+    if (loading) {
+      button.innerHTML = "⏳ Chargement...";
+      button.style.cursor = "wait";
+      button.style.opacity = "0.7";
+    } else if (success === true) {
+      button.innerHTML = "✅ Actualisé !";
+      button.style.background =
+        "linear-gradient(135deg, #28a745 0%, #1e7e34 100%)";
+      setTimeout(() => {
+        button.innerHTML = "🔄 Actualiser PLV";
+        button.style.background =
+          "linear-gradient(135deg, #376ab3 0%, #2a5694 100%)";
+        button.style.cursor = "pointer";
+        button.style.opacity = "1";
+      }, 2000);
+    } else if (success === false) {
+      button.innerHTML = "❌ Erreur";
+      button.style.background =
+        "linear-gradient(135deg, #dc3545 0%, #b02a37 100%)";
+      setTimeout(() => {
+        button.innerHTML = "🔄 Actualiser PLV";
+        button.style.background =
+          "linear-gradient(135deg, #376ab3 0%, #2a5694 100%)";
+        button.style.cursor = "pointer";
+        button.style.opacity = "1";
+      }, 2000);
+    }
+  }
+
   function loadSingleTextureAsync(material, imageUrl, opaque = false) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -65,6 +151,7 @@
 
   async function loadAllTextures() {
     console.log(`🚀 Chargement textures PLV (${config.projectId})...`);
+    updateButtonState(true);
 
     const textureEntries = Object.entries(config.textures);
     let loadedCount = 0;
@@ -95,10 +182,11 @@
       await Promise.all(promises);
     }
 
+    const success = errorCount === 0;
     console.log(
       `✅ Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`
     );
-    return { loadedCount, errorCount, totalTextures };
+    updateButtonState(false, success);
   }
 
   // Initialisation
@@ -110,11 +198,14 @@
   });
 
   viewer.onSceneLoadComplete(() => {
+    createReloadButton();
     loadAllTextures();
   });
 
-  // Exposer pour appel externe (popupload-plv.js)
   window.reloadPLVTextures = loadAllTextures;
 
   console.log("🚀 Module AutoTextures PLV prêt");
+  console.log(
+    "💡 Utilisez window.reloadPLVTextures() ou le bouton pour recharger"
+  );
 })();

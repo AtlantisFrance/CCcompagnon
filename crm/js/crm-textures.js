@@ -211,13 +211,14 @@
 
     var spacesOptions = '<option value="">Sélectionner un espace</option>';
     spaces.forEach(function (s) {
+      var selected = preselectedSpaceId && s.id == preselectedSpaceId;
       spacesOptions +=
         '<option value="' +
         s.id +
         '" data-slug="' +
         s.slug +
         '"' +
-        (preselectedSpaceId == s.id ? " selected" : "") +
+        (selected ? " selected" : "") +
         ">" +
         s.name +
         " (" +
@@ -225,257 +226,308 @@
         ")</option>";
     });
 
+    state.plvDraft = {
+      spaceId: preselectedSpaceId,
+      spaceSlug: "",
+      name: "",
+      description: "",
+      carreCount: 0,
+      paysageCount: 0,
+      portraitCount: 0,
+      slots: [],
+    };
+
+    if (preselectedSpaceId) {
+      var preSpace = spaces.find(function (s) {
+        return s.id == preselectedSpaceId;
+      });
+      if (preSpace) state.plvDraft.spaceSlug = preSpace.slug;
+    }
+
     openModal(
       "➕ Nouveau projet PLV - Étape 1/2",
-      '<form id="create-plv-form-step1">' +
+      '<form id="plv-step1-form">' +
         '<div class="crm-form-group">' +
-        '<label class="crm-form-label">Espace Shapespark *</label>' +
-        '<select class="crm-form-select" name="space_id" id="plv-space-select" required>' +
+        '<label class="crm-form-label">Espace *</label>' +
+        '<select class="crm-form-select" id="plv-space" required onchange="window.CRM.updateStep2Summary()">' +
         spacesOptions +
         "</select>" +
         "</div>" +
         '<div class="crm-form-group">' +
         '<label class="crm-form-label">Nom du projet *</label>' +
-        '<input type="text" class="crm-form-input" name="name" placeholder="Ex: PLV Salon Principal" required>' +
+        '<input type="text" class="crm-form-input" id="plv-name" placeholder="Ex: PLV Boutique Paris" required>' +
         "</div>" +
-        '<div class="crm-card" style="margin-top: 20px; padding: 16px;">' +
-        '<h4 style="margin-bottom: 16px;">🎯 Nombre de slots par format</h4>' +
+        '<div class="crm-form-group">' +
+        '<label class="crm-form-label">Description</label>' +
+        '<textarea class="crm-form-textarea" id="plv-description" placeholder="Description optionnelle..."></textarea>' +
+        "</div>" +
+        '<div style="background: var(--bg-tertiary); padding: 16px; border-radius: 8px; margin-top: 20px;">' +
+        '<h4 style="margin-bottom: 12px; color: var(--text-primary);">📐 Nombre de slots par format</h4>' +
         '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">' +
-        '<div class="crm-form-group" style="margin-bottom: 0;">' +
-        '<label class="crm-form-label">🟦 Carrés (1:1)</label>' +
-        '<input type="number" class="crm-form-input" name="nb_carres" min="0" max="100" value="0">' +
+        '<div class="crm-form-group" style="margin: 0;">' +
+        '<label class="crm-form-label">Carré (1:1)</label>' +
+        '<input type="number" class="crm-form-input" id="plv-carre-count" value="0" min="0" max="100" onchange="window.CRM.updateStep2Summary()">' +
         "</div>" +
-        '<div class="crm-form-group" style="margin-bottom: 0;">' +
-        '<label class="crm-form-label">🌄 Paysages (16:9)</label>' +
-        '<input type="number" class="crm-form-input" name="nb_paysages" min="0" max="100" value="0">' +
+        '<div class="crm-form-group" style="margin: 0;">' +
+        '<label class="crm-form-label">Paysage (16:9)</label>' +
+        '<input type="number" class="crm-form-input" id="plv-paysage-count" value="0" min="0" max="100" onchange="window.CRM.updateStep2Summary()">' +
         "</div>" +
-        '<div class="crm-form-group" style="margin-bottom: 0;">' +
-        '<label class="crm-form-label">🖼️ Portraits (9:16)</label>' +
-        '<input type="number" class="crm-form-input" name="nb_portraits" min="0" max="100" value="0">' +
+        '<div class="crm-form-group" style="margin: 0;">' +
+        '<label class="crm-form-label">Portrait (9:16)</label>' +
+        '<input type="number" class="crm-form-input" id="plv-portrait-count" value="0" min="0" max="100" onchange="window.CRM.updateStep2Summary()">' +
         "</div>" +
         "</div>" +
+        '<div id="plv-summary" style="margin-top: 12px; padding: 10px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 13px; color: var(--text-secondary);"></div>' +
         "</div>" +
         "</form>",
       '<button class="crm-btn crm-btn-secondary" onclick="window.CRM.closeModal()">Annuler</button>' +
         '<button class="crm-btn crm-btn-primary" onclick="window.CRM.goToPLVStep2()">Suivant →</button>'
     );
+
+    setTimeout(function () {
+      CRM.updateStep2Summary();
+    }, 100);
+  }
+
+  // === UPDATE SUMMARY ===
+  function updateStep2Summary() {
+    var carreCount = parseInt(
+      document.getElementById("plv-carre-count")?.value || 0
+    );
+    var paysageCount = parseInt(
+      document.getElementById("plv-paysage-count")?.value || 0
+    );
+    var portraitCount = parseInt(
+      document.getElementById("plv-portrait-count")?.value || 0
+    );
+    var total = carreCount + paysageCount + portraitCount;
+
+    var summaryEl = document.getElementById("plv-summary");
+    if (summaryEl) {
+      if (total === 0) {
+        summaryEl.innerHTML = "⚠️ Ajoutez au moins 1 slot";
+        summaryEl.style.background = "rgba(245, 158, 11, 0.1)";
+      } else {
+        var parts = [];
+        if (carreCount > 0) parts.push(carreCount + " carré(s)");
+        if (paysageCount > 0) parts.push(paysageCount + " paysage(s)");
+        if (portraitCount > 0) parts.push(portraitCount + " portrait(s)");
+        summaryEl.innerHTML = "✅ " + total + " slots: " + parts.join(", ");
+        summaryEl.style.background = "rgba(34, 197, 94, 0.1)";
+      }
+    }
   }
 
   // === GO TO STEP 2 ===
   function goToPLVStep2() {
-    var form = document.getElementById("create-plv-form-step1");
-    var spaceSelect = document.getElementById("plv-space-select");
-    var selectedOption = spaceSelect.options[spaceSelect.selectedIndex];
+    var spaceSelect = document.getElementById("plv-space");
+    var nameInput = document.getElementById("plv-name");
+    var descInput = document.getElementById("plv-description");
 
-    var spaceId = spaceSelect.value;
-    var spaceSlug = selectedOption ? selectedOption.dataset.slug : "";
-    var projectName = form.querySelector('[name="name"]').value.trim();
+    var spaceId = spaceSelect?.value;
+    var spaceName = spaceSelect?.options[spaceSelect.selectedIndex]?.text || "";
+    var spaceSlug =
+      spaceSelect?.options[spaceSelect.selectedIndex]?.dataset?.slug || "";
+    var name = nameInput?.value?.trim();
+    var description = descInput?.value?.trim();
 
-    var nbCarres =
-      parseInt(form.querySelector('[name="nb_carres"]').value) || 0;
-    var nbPaysages =
-      parseInt(form.querySelector('[name="nb_paysages"]').value) || 0;
-    var nbPortraits =
-      parseInt(form.querySelector('[name="nb_portraits"]').value) || 0;
+    var carreCount = parseInt(
+      document.getElementById("plv-carre-count")?.value || 0
+    );
+    var paysageCount = parseInt(
+      document.getElementById("plv-paysage-count")?.value || 0
+    );
+    var portraitCount = parseInt(
+      document.getElementById("plv-portrait-count")?.value || 0
+    );
+    var total = carreCount + paysageCount + portraitCount;
 
-    // Validation
     if (!spaceId) {
-      showToast("Veuillez sélectionner un espace", "error");
+      showToast("Veuillez sélectionner un espace", "warning");
       return;
     }
-    if (!projectName) {
-      showToast("Veuillez entrer un nom de projet", "error");
+    if (!name) {
+      showToast("Veuillez saisir un nom de projet", "warning");
       return;
     }
-    var total = nbCarres + nbPaysages + nbPortraits;
     if (total === 0) {
-      showToast("Veuillez définir au moins un slot", "error");
+      showToast("Ajoutez au moins 1 slot", "warning");
       return;
     }
 
-    // Stocker les données pour l'étape 2
     state.plvDraft = {
-      space_id: spaceId,
-      space_slug: spaceSlug,
-      name: projectName,
-      nb_carres: nbCarres,
-      nb_paysages: nbPaysages,
-      nb_portraits: nbPortraits,
+      spaceId: spaceId,
+      spaceSlug: spaceSlug,
+      spaceName: spaceName,
+      name: name,
+      description: description,
+      carreCount: carreCount,
+      paysageCount: paysageCount,
+      portraitCount: portraitCount,
+      slots: [],
     };
 
+    // Générer les slots
+    var slots = [];
+    for (var i = 1; i <= carreCount; i++) {
+      slots.push({
+        format: "carre",
+        index: i,
+        shader: "c" + i + "_shdr",
+        file: "template_C" + i + ".png",
+        transparent: true,
+      });
+    }
+    for (var i = 1; i <= paysageCount; i++) {
+      slots.push({
+        format: "paysage",
+        index: i,
+        shader: "l" + i + "_shdr",
+        file: "template_L" + i + ".png",
+        transparent: true,
+      });
+    }
+    for (var i = 1; i <= portraitCount; i++) {
+      slots.push({
+        format: "portrait",
+        index: i,
+        shader: "p" + i + "_shdr",
+        file: "template_P" + i + ".png",
+        transparent: true,
+      });
+    }
+    state.plvDraft.slots = slots;
+
     // Afficher étape 2
-    showPLVStep2();
+    renderPLVStep2();
   }
 
-  // === SHOW STEP 2 ===
-  function showPLVStep2() {
+  // === RENDER STEP 2 ===
+  function renderPLVStep2() {
     var draft = state.plvDraft;
 
-    // Générer la liste des slots
-    var slotsHtml = "";
+    var slotsHtml =
+      '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">';
 
-    // Carrés
-    for (var i = 1; i <= draft.nb_carres; i++) {
-      slotsHtml += createSlotRow("carre", "c", i, "C", "🟦");
-    }
+    draft.slots.forEach(function (slot, idx) {
+      var formatLabel =
+        slot.format === "carre"
+          ? "Carré 1:1"
+          : slot.format === "paysage"
+          ? "Paysage 16:9"
+          : "Portrait 9:16";
+      var formatIcon =
+        slot.format === "carre"
+          ? "⬜"
+          : slot.format === "paysage"
+          ? "🖼️"
+          : "📱";
 
-    // Paysages
-    for (var i = 1; i <= draft.nb_paysages; i++) {
-      slotsHtml += createSlotRow("paysage", "l", i, "L", "🌄");
-    }
-
-    // Portraits
-    for (var i = 1; i <= draft.nb_portraits; i++) {
-      slotsHtml += createSlotRow("portrait", "p", i, "P", "🖼️");
-    }
-
-    var total = draft.nb_carres + draft.nb_paysages + draft.nb_portraits;
+      slotsHtml +=
+        '<div class="plv-slot-card" data-slot-index="' +
+        idx +
+        '">' +
+        '<div class="plv-slot-header">' +
+        '<span class="plv-slot-icon">' +
+        formatIcon +
+        "</span>" +
+        '<span class="plv-slot-name">' +
+        slot.shader +
+        "</span>" +
+        "</div>" +
+        '<div class="plv-slot-info">' +
+        formatLabel +
+        "</div>" +
+        '<label class="plv-slot-checkbox">' +
+        '<input type="checkbox" id="slot-transparent-' +
+        idx +
+        '" ' +
+        (slot.transparent ? "checked" : "") +
+        ' onchange="window.CRM.toggleSlotTransparent(' +
+        idx +
+        ')">' +
+        "<span>Transparent</span>" +
+        "</label>" +
+        "</div>";
+    });
+    slotsHtml += "</div>";
 
     openModal(
       "➕ Nouveau projet PLV - Étape 2/2",
-      '<div style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">' +
-        "<strong>" +
+      '<div style="margin-bottom: 20px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">' +
+        "<h4>📋 Récapitulatif</h4>" +
+        '<p style="margin: 8px 0; color: var(--text-secondary);">Espace: <strong>' +
+        draft.spaceName +
+        "</strong></p>" +
+        '<p style="margin: 8px 0; color: var(--text-secondary);">Projet: <strong>' +
         draft.name +
-        "</strong> • Espace: " +
-        draft.space_slug +
-        " • " +
-        total +
-        " slots" +
+        "</strong></p>" +
+        '<p style="margin: 8px 0; color: var(--text-secondary);">Total: <strong>' +
+        draft.slots.length +
+        " slots</strong></p>" +
         "</div>" +
-        '<p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">' +
-        "🔲 Cochez les slots qui doivent supporter la <strong>transparence (alpha)</strong>.<br>" +
-        "Les slots non cochés seront traités comme <strong>opaques</strong>." +
-        "</p>" +
-        '<div id="plv-slots-list" style="max-height: 400px; overflow-y: auto;">' +
-        '<table class="crm-table" style="margin: 0;">' +
-        "<thead>" +
-        "<tr>" +
-        '<th style="width: 50px;">Format</th>' +
-        "<th>Shader</th>" +
-        "<th>Fichier</th>" +
-        '<th style="width: 120px; text-align: center;">Transparent ?</th>' +
-        "</tr>" +
-        "</thead>" +
-        "<tbody>" +
+        '<div style="margin-bottom: 16px;">' +
+        '<h4 style="margin-bottom: 12px;">🎨 Configuration des slots</h4>' +
+        '<p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Cochez "Transparent" pour les PLV avec fond transparent (alphaMode BLEND), décochez pour les opaques.</p>' +
         slotsHtml +
-        "</tbody>" +
-        "</table>" +
         "</div>" +
-        '<div style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; display: flex; justify-content: space-between;">' +
-        "<span>Résumé :</span>" +
-        '<span id="plv-step2-summary">0 transparents, ' +
-        total +
-        " opaques</span>" +
-        "</div>",
+        "<style>" +
+        ".plv-slot-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; }" +
+        ".plv-slot-card:hover { border-color: var(--accent-primary); }" +
+        ".plv-slot-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }" +
+        ".plv-slot-icon { font-size: 18px; }" +
+        ".plv-slot-name { font-weight: 600; font-family: monospace; font-size: 13px; }" +
+        ".plv-slot-info { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }" +
+        ".plv-slot-checkbox { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }" +
+        ".plv-slot-checkbox input { cursor: pointer; }" +
+        "</style>",
       '<button class="crm-btn crm-btn-secondary" onclick="window.CRM.backToPLVStep1()">← Retour</button>' +
-        '<button class="crm-btn crm-btn-primary" onclick="window.CRM.savePLVProject()">Créer le projet</button>'
-    );
-
-    updateStep2Summary();
-  }
-
-  // === CREATE SLOT ROW ===
-  function createSlotRow(format, prefix, index, filePrefix, icon) {
-    var shaderName = prefix + index + "_shdr";
-    var fileName = "template_" + filePrefix + index + ".png";
-
-    return (
-      "<tr>" +
-      '<td style="text-align: center; font-size: 20px;">' +
-      icon +
-      "</td>" +
-      '<td><code style="background: var(--bg-primary); padding: 4px 8px; border-radius: 4px;">' +
-      shaderName +
-      "</code></td>" +
-      '<td><code style="background: var(--bg-primary); padding: 4px 8px; border-radius: 4px;">' +
-      fileName +
-      "</code></td>" +
-      '<td style="text-align: center;">' +
-      '<label style="cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">' +
-      '<input type="checkbox" class="plv-transparent-check" data-format="' +
-      format +
-      '" data-shader="' +
-      shaderName +
-      '" data-file="' +
-      fileName +
-      '" onchange="window.CRM.updateStep2Summary()">' +
-      '<span class="plv-check-label">🔲</span>' +
-      "</label>" +
-      "</td>" +
-      "</tr>"
+        '<button class="crm-btn crm-btn-primary" onclick="window.CRM.savePLVProject()">✅ Créer le projet</button>'
     );
   }
 
-  // === UPDATE STEP 2 SUMMARY ===
-  function updateStep2Summary() {
-    var checkboxes = document.querySelectorAll(".plv-transparent-check");
-    var transparents = 0;
-    var total = checkboxes.length;
-
-    checkboxes.forEach(function (cb) {
-      if (cb.checked) {
-        transparents++;
-        cb.parentElement.querySelector(".plv-check-label").textContent = "✅";
-      } else {
-        cb.parentElement.querySelector(".plv-check-label").textContent = "🔲";
-      }
-    });
-
-    var opaques = total - transparents;
-    var summary = document.getElementById("plv-step2-summary");
-    if (summary) {
-      summary.innerHTML =
-        '<span style="color: var(--info);">' +
-        transparents +
-        " transparent" +
-        (transparents > 1 ? "s" : "") +
-        "</span>, " +
-        '<span style="color: var(--warning);">' +
-        opaques +
-        " opaque" +
-        (opaques > 1 ? "s" : "") +
-        "</span>";
+  // === TOGGLE SLOT TRANSPARENT ===
+  function toggleSlotTransparent(idx) {
+    if (state.plvDraft && state.plvDraft.slots[idx]) {
+      var checkbox = document.getElementById("slot-transparent-" + idx);
+      state.plvDraft.slots[idx].transparent = checkbox?.checked || false;
     }
   }
 
   // === BACK TO STEP 1 ===
   function backToPLVStep1() {
-    var draft = state.plvDraft;
-    createPLVProject(draft.space_id);
+    var draft = state.plvDraft || {};
+    createPLVProject(draft.spaceId);
 
-    // Remettre les valeurs
     setTimeout(function () {
-      var form = document.getElementById("create-plv-form-step1");
-      if (form) {
-        form.querySelector('[name="name"]').value = draft.name;
-        form.querySelector('[name="nb_carres"]').value = draft.nb_carres;
-        form.querySelector('[name="nb_paysages"]').value = draft.nb_paysages;
-        form.querySelector('[name="nb_portraits"]').value = draft.nb_portraits;
-      }
+      if (draft.name) document.getElementById("plv-name").value = draft.name;
+      if (draft.description)
+        document.getElementById("plv-description").value = draft.description;
+      if (draft.carreCount)
+        document.getElementById("plv-carre-count").value = draft.carreCount;
+      if (draft.paysageCount)
+        document.getElementById("plv-paysage-count").value = draft.paysageCount;
+      if (draft.portraitCount)
+        document.getElementById("plv-portrait-count").value =
+          draft.portraitCount;
+      CRM.updateStep2Summary();
     }, 100);
   }
 
   // === SAVE PLV PROJECT ===
   async function savePLVProject() {
     var draft = state.plvDraft;
-    var checkboxes = document.querySelectorAll(".plv-transparent-check");
 
-    // Construire la liste des slots
-    var slots = [];
-    checkboxes.forEach(function (cb) {
-      slots.push({
-        format: cb.dataset.format,
-        shader: cb.dataset.shader,
-        file: cb.dataset.file,
-        transparent: cb.checked,
-      });
-    });
+    if (!draft || !draft.spaceId || !draft.name || draft.slots.length === 0) {
+      showToast("Données incomplètes", "error");
+      return;
+    }
 
     var data = {
-      space_id: draft.space_id,
-      space_slug: draft.space_slug,
+      space_id: draft.spaceId,
       name: draft.name,
-      slots_config: JSON.stringify(slots),
+      description: draft.description || "",
+      slots_config: draft.slots,
     };
 
     try {
@@ -525,7 +577,7 @@
     }
   }
 
-  // === GENERATE AUTOTEXTURES CODE ===
+  // === GENERATE AUTOTEXTURES CODE (SANS BOUTON) ===
   function generateAutotexturesCode(project) {
     var projectFolder = project.space_slug || project.folder_name || "project";
 
@@ -575,88 +627,6 @@
       ",\n" +
       "  };\n" +
       "\n" +
-      "  let isLoading = false;\n" +
-      "\n" +
-      "  function createReloadButton() {\n" +
-      '    const button = document.createElement("button");\n' +
-      '    button.id = "reload-textures-btn";\n' +
-      '    button.innerHTML = "🔄 Actualiser PLV";\n' +
-      '    button.title = "Recharger les textures depuis le serveur";\n' +
-      "\n" +
-      "    button.style.cssText = `\n" +
-      "      position: fixed;\n" +
-      "      top: 20px;\n" +
-      "      left: 50%;\n" +
-      "      transform: translateX(-50%);\n" +
-      "      z-index: 10000;\n" +
-      "      padding: 10px 20px;\n" +
-      "      font-size: 14px;\n" +
-      "      font-weight: 600;\n" +
-      '      font-family: "Segoe UI", Roboto, sans-serif;\n' +
-      "      color: white;\n" +
-      "      background: linear-gradient(135deg, #376ab3 0%, #2a5694 100%);\n" +
-      "      border: 2px solid rgba(255, 255, 255, 0.3);\n" +
-      "      border-radius: 25px;\n" +
-      "      cursor: pointer;\n" +
-      "      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);\n" +
-      "      transition: all 0.3s ease;\n" +
-      "    `;\n" +
-      "\n" +
-      '    button.addEventListener("mouseenter", () => {\n' +
-      "      if (!isLoading) {\n" +
-      '        button.style.transform = "translateX(-50%) translateY(-2px)";\n' +
-      '        button.style.boxShadow = "0 6px 20px rgba(55, 106, 179, 0.5)";\n' +
-      "      }\n" +
-      "    });\n" +
-      "\n" +
-      '    button.addEventListener("mouseleave", () => {\n' +
-      "      if (!isLoading) {\n" +
-      '        button.style.transform = "translateX(-50%)";\n' +
-      '        button.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.3)";\n' +
-      "      }\n" +
-      "    });\n" +
-      "\n" +
-      '    button.addEventListener("click", () => {\n' +
-      "      if (!isLoading) {\n" +
-      "        loadAllTextures();\n" +
-      "      }\n" +
-      "    });\n" +
-      "\n" +
-      "    document.body.appendChild(button);\n" +
-      '    console.log("🔘 Bouton rechargement PLV créé");\n' +
-      "  }\n" +
-      "\n" +
-      "  function updateButtonState(loading, success = null) {\n" +
-      '    const button = document.getElementById("reload-textures-btn");\n' +
-      "    if (!button) return;\n" +
-      "\n" +
-      "    isLoading = loading;\n" +
-      "\n" +
-      "    if (loading) {\n" +
-      '      button.innerHTML = "⏳ Chargement...";\n' +
-      '      button.style.cursor = "wait";\n' +
-      '      button.style.opacity = "0.7";\n' +
-      "    } else if (success === true) {\n" +
-      '      button.innerHTML = "✅ Actualisé !";\n' +
-      '      button.style.background = "linear-gradient(135deg, #28a745 0%, #1e7e34 100%)";\n' +
-      "      setTimeout(() => {\n" +
-      '        button.innerHTML = "🔄 Actualiser PLV";\n' +
-      '        button.style.background = "linear-gradient(135deg, #376ab3 0%, #2a5694 100%)";\n' +
-      '        button.style.cursor = "pointer";\n' +
-      '        button.style.opacity = "1";\n' +
-      "      }, 2000);\n" +
-      "    } else if (success === false) {\n" +
-      '      button.innerHTML = "❌ Erreur";\n' +
-      '      button.style.background = "linear-gradient(135deg, #dc3545 0%, #b02a37 100%)";\n' +
-      "      setTimeout(() => {\n" +
-      '        button.innerHTML = "🔄 Actualiser PLV";\n' +
-      '        button.style.background = "linear-gradient(135deg, #376ab3 0%, #2a5694 100%)";\n' +
-      '        button.style.cursor = "pointer";\n' +
-      '        button.style.opacity = "1";\n' +
-      "      }, 2000);\n" +
-      "    }\n" +
-      "  }\n" +
-      "\n" +
       "  function loadSingleTextureAsync(material, imageUrl, opaque = false) {\n" +
       "    return new Promise((resolve, reject) => {\n" +
       "      const img = new Image();\n" +
@@ -703,7 +673,6 @@
       "\n" +
       "  async function loadAllTextures() {\n" +
       "    console.log(`🚀 Chargement textures PLV (${config.projectId})...`);\n" +
-      "    updateButtonState(true);\n" +
       "\n" +
       "    const textureEntries = Object.entries(config.textures);\n" +
       "    let loadedCount = 0;\n" +
@@ -734,9 +703,8 @@
       "      await Promise.all(promises);\n" +
       "    }\n" +
       "\n" +
-      "    const success = errorCount === 0;\n" +
       "    console.log(`✅ Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`);\n" +
-      "    updateButtonState(false, success);\n" +
+      "    return { loadedCount, errorCount, totalTextures };\n" +
       "  }\n" +
       "\n" +
       "  // Initialisation\n" +
@@ -748,14 +716,13 @@
       "  });\n" +
       "\n" +
       "  viewer.onSceneLoadComplete(() => {\n" +
-      "    createReloadButton();\n" +
       "    loadAllTextures();\n" +
       "  });\n" +
       "\n" +
+      "  // Exposer pour appel externe (popupload-plv.js)\n" +
       "  window.reloadPLVTextures = loadAllTextures;\n" +
       "\n" +
       '  console.log("🚀 Module AutoTextures PLV prêt");\n' +
-      '  console.log("💡 Utilisez window.reloadPLVTextures() ou le bouton pour recharger");\n' +
       "})();"
     );
   }
@@ -803,6 +770,7 @@
     goToPLVStep2: goToPLVStep2,
     updateStep2Summary: updateStep2Summary,
     backToPLVStep1: backToPLVStep1,
+    toggleSlotTransparent: toggleSlotTransparent,
     savePLVProject: savePLVProject,
     viewPLVCode: viewPLVCode,
     copyPLVCode: copyPLVCode,

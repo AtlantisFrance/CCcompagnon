@@ -2,6 +2,23 @@
 # 🔒 SÉCURITÉ API ATLANTIS
 # ============================================
 
+
+
+# ============================================
+# 🔑 TRANSMISSION DU HEADER AUTHORIZATION
+# ============================================
+# OVH/Apache ne transmet pas le header Authorization par défaut
+# Ces règles forcent sa transmission au PHP
+
+RewriteEngine On
+
+# Transmettre le header Authorization au PHP
+RewriteCond %{HTTP:Authorization} .+
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Alternative pour certaines configs Apache
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
 # Activer la réécriture d'URL
 RewriteEngine On
 
@@ -27,3 +44,4 @@ Options -Indexes
 
 # Protection contre les injections XSS
 # Limiter les méthodes HTTP autorisées
+

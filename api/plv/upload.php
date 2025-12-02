@@ -1,56 +1,97 @@
 <?php
 /**
  * ============================================
- * 📤 API PLV - UPLOAD D'IMAGES
+ * 📤 PLV UPLOAD - ATLANTIS CITY
  * ============================================
  * 
- * POST /api/plv/upload.php (multipart/form-data)
- *   - slot_id: ID du slot
- *   - image: Fichier image
+ * POST /api/plv/upload.php
+ * Content-Type: multipart/form-data
+ * 
+ * Params:
+ *   - space_slug (string) : slug de l'espace
+ *   - zone_slug (string|null) : slug de la zone (optionnel)
+ *   - shader_name (string) : nom du shader (ex: c1_shdr)
+ *   - image (file) : fichier PNG < 5 Mo
  */
 
 require_once __DIR__ . '/../config/init.php';
 
-// Configuration upload
-define('PLV_MAX_FILE_SIZE', 10 * 1024 * 1024); // 10 Mo
-define('PLV_ALLOWED_TYPES', ['image/jpeg', 'image/png', 'image/webp']);
-
-$method = $_SERVER['REQUEST_METHOD'];
-
-if ($method !== 'POST') {
+// Uniquement POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     errorResponse('Méthode non autorisée', 405);
 }
 
-/**
- * Vérifie si l'utilisateur peut accéder à un projet PLV
- */
-function canAccessPLVProject($userId, $spaceId, $zoneId = null) {
+// ============================================
+// 🔐 AUTHENTIFICATION
+// ============================================
+$token = getAuthToken();
+if (!$token) {
+    errorResponse('Token manquant', 401);
+}
+
+$user = validateToken($token);
+if (!$user) {
+    errorResponse('Session invalide ou expirée', 401);
+}
+
+// ============================================
+// 📥 RÉCUPÉRATION DES PARAMÈTRES
+// ============================================
+$spaceSlug = isset($_POST['space_slug']) ? trim($_POST['space_slug']) : '';
+$zoneSlug = isset($_POST['zone_slug']) ? trim($_POST['zone_slug']) : null;
+$shaderName = isset($_POST['shader_name']) ? trim($_POST['shader_name']) : '';
+
+// Zone slug vide = null
+if (empty($zoneSlug)) {
+    $zoneSlug = null;
+}
+
+// Validation paramètres
+if (empty($spaceSlug)) {
+    errorResponse('space_slug requis', 400);
+}
+
+if (empty($shaderName)) {
+    errorResponse('shader_name requis', 400);
+}
+
+// Validation format shader (ex: c1_shdr, l1_shdr, p1_shdr)
+if (!preg_match('/^[clp]\d+_shdr$/', $shaderName)) {
+    errorResponse('Format shader_name invalide (attendu: c1_shdr, l1_shdr, p1_shdr...)', 400);
+}
+
+// ============================================
+// 🔒 VÉRIFICATION DES PERMISSIONS
+// ============================================
+function canUploadPLV($user, $spaceSlug, $zoneSlug) {
+    // Super admin = accès total
+    if ($user['global_role'] === 'super_admin') {
+        return true;
+    }
+    
+    // Récupérer les rôles de l'utilisateur
     $db = getDB();
-    
-    $stmt = $db->prepare("SELECT global_role FROM users WHERE id = :id");
-    $stmt->execute([':id' => $userId]);
-    $user = $stmt->fetch();
-    
-    if ($user && $user['global_role'] === 'super_admin') {
-        return true;
-    }
-    
     $stmt = $db->prepare("
-        SELECT role FROM user_space_roles 
-        WHERE user_id = :user_id AND space_id = :space_id AND zone_id IS NULL AND role = 'space_admin'
+        SELECT usr.role, s.slug as space_slug, z.slug as zone_slug
+        FROM user_space_roles usr
+        JOIN spaces s ON s.id = usr.space_id
+        LEFT JOIN zones z ON z.id = usr.zone_id
+        WHERE usr.user_id = :user_id
     ");
-    $stmt->execute([':user_id' => $userId, ':space_id' => $spaceId]);
-    if ($stmt->fetch()) {
-        return true;
-    }
+    $stmt->execute([':user_id' => $user['id']]);
+    $roles = $stmt->fetchAll();
     
-    if ($zoneId) {
-        $stmt = $db->prepare("
-            SELECT role FROM user_space_roles 
-            WHERE user_id = :user_id AND space_id = :space_id AND zone_id = :zone_id AND role = 'zone_admin'
-        ");
-        $stmt->execute([':user_id' => $userId, ':space_id' => $spaceId, ':zone_id' => $zoneId]);
-        if ($stmt->fetch()) {
+    foreach ($roles as $role) {
+        // Space admin de cet espace = accès à tout l'espace
+        if ($role['space_slug'] === $spaceSlug && $role['role'] === 'space_admin') {
+            return true;
+        }
+        
+        // Zone admin de cette zone spécifique
+        if ($role['space_slug'] === $spaceSlug && 
+            $role['zone_slug'] === $zoneSlug && 
+            $role['role'] === 'zone_admin' &&
+            !empty($zoneSlug)) {
             return true;
         }
     }
@@ -58,130 +99,136 @@ function canAccessPLVProject($userId, $spaceId, $zoneId = null) {
     return false;
 }
 
+if (!canUploadPLV($user, $spaceSlug, $zoneSlug)) {
+    errorResponse('Permission refusée pour cet espace/zone', 403);
+}
+
+// ============================================
+// 📁 VÉRIFICATION DU FICHIER
+// ============================================
+if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+    $uploadErrors = [
+        UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (limite serveur)',
+        UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux (limite formulaire)',
+        UPLOAD_ERR_PARTIAL => 'Fichier partiellement uploadé',
+        UPLOAD_ERR_NO_FILE => 'Aucun fichier envoyé',
+        UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant',
+        UPLOAD_ERR_CANT_WRITE => 'Erreur d\'écriture disque',
+        UPLOAD_ERR_EXTENSION => 'Extension PHP a bloqué l\'upload'
+    ];
+    
+    $errorCode = $_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE;
+    $errorMsg = $uploadErrors[$errorCode] ?? 'Erreur upload inconnue';
+    errorResponse($errorMsg, 400);
+}
+
+$file = $_FILES['image'];
+$originalName = $file['name'];
+$tmpPath = $file['tmp_name'];
+$fileSize = $file['size'];
+
+// Vérifier la taille (5 Mo max)
+$maxSize = 5 * 1024 * 1024; // 5 Mo
+if ($fileSize > $maxSize) {
+    errorResponse('Fichier trop volumineux (max 5 Mo)', 400);
+}
+
+// Vérifier le type MIME
+$finfo = new finfo(FILEINFO_MIME_TYPE);
+$mimeType = $finfo->file($tmpPath);
+
+if ($mimeType !== 'image/png') {
+    errorResponse('Seuls les fichiers PNG sont autorisés (reçu: ' . $mimeType . ')', 400);
+}
+
+// Vérifier l'extension
+$extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+if ($extension !== 'png') {
+    errorResponse('Extension invalide (attendu: .png)', 400);
+}
+
+// ============================================
+// 📝 GÉNÉRATION DU NOM DE FICHIER
+// ============================================
+// Extraire préfixe et numéro du shader: c1_shdr → C1, l2_shdr → L2
+preg_match('/^([clp])(\d+)_shdr$/', $shaderName, $matches);
+$prefix = strtoupper($matches[1]); // c → C, l → L, p → P
+$number = $matches[2];
+$targetFileName = "template_{$prefix}{$number}.png";
+
+// ============================================
+// 📂 CRÉATION DU DOSSIER SI NÉCESSAIRE
+// ============================================
+$uploadDir = dirname(dirname(__DIR__)) . '/plv/' . $spaceSlug;
+
+// Sécurité : valider le slug (pas de path traversal)
+if (!preg_match('/^[a-z0-9_-]+$/', $spaceSlug)) {
+    errorResponse('space_slug invalide', 400);
+}
+
+if (!is_dir($uploadDir)) {
+    if (!mkdir($uploadDir, 0755, true)) {
+        errorResponse('Impossible de créer le dossier de destination', 500);
+    }
+}
+
+// ============================================
+// 💾 SAUVEGARDE DU FICHIER
+// ============================================
+$targetPath = $uploadDir . '/' . $targetFileName;
+
+// Supprimer l'ancien fichier s'il existe
+if (file_exists($targetPath)) {
+    unlink($targetPath);
+}
+
+// Déplacer le fichier uploadé
+if (!move_uploaded_file($tmpPath, $targetPath)) {
+    errorResponse('Erreur lors de la sauvegarde du fichier', 500);
+}
+
+// ============================================
+// 📊 LOG DANS LA BASE DE DONNÉES
+// ============================================
 try {
     $db = getDB();
-    $currentUser = requireAuth();
-
-    // Vérifier que slot_id est fourni
-    if (!isset($_POST['slot_id'])) {
-        errorResponse('slot_id requis', 400);
-    }
-
-    $slotId = $_POST['slot_id'];
-
-    // Vérifier que le fichier est fourni
-    if (!isset($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE) {
-        errorResponse('Fichier image requis', 400);
-    }
-
-    $file = $_FILES['image'];
-
-    // Vérifier les erreurs d'upload
-    if ($file['error'] !== UPLOAD_ERR_OK) {
-        $errors = [
-            UPLOAD_ERR_INI_SIZE => 'Fichier trop volumineux (limite serveur)',
-            UPLOAD_ERR_FORM_SIZE => 'Fichier trop volumineux',
-            UPLOAD_ERR_PARTIAL => 'Upload incomplet',
-            UPLOAD_ERR_NO_TMP_DIR => 'Dossier temporaire manquant',
-            UPLOAD_ERR_CANT_WRITE => 'Erreur écriture disque',
-        ];
-        errorResponse($errors[$file['error']] ?? 'Erreur upload', 400);
-    }
-
-    // Vérifier la taille
-    if ($file['size'] > PLV_MAX_FILE_SIZE) {
-        errorResponse('Fichier trop volumineux (max 10 Mo)', 400);
-    }
-
-    // Vérifier le type MIME
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mimeType = finfo_file($finfo, $file['tmp_name']);
-    finfo_close($finfo);
-
-    if (!in_array($mimeType, PLV_ALLOWED_TYPES)) {
-        errorResponse('Type de fichier non autorisé. Formats acceptés: JPG, PNG, WebP', 400);
-    }
-
-    // Vérifier que c'est une image valide
-    $imageInfo = getimagesize($file['tmp_name']);
-    if ($imageInfo === false) {
-        errorResponse('Fichier image invalide', 400);
-    }
-
-    // Récupérer le slot et son projet
     $stmt = $db->prepare("
-        SELECT s.*, p.id as project_id, p.space_id, p.zone_id
-        FROM plv_slots s
-        JOIN plv_projects p ON p.id = s.project_id
-        WHERE s.id = :id
-    ");
-    $stmt->execute([':id' => $slotId]);
-    $slot = $stmt->fetch();
-
-    if (!$slot) {
-        errorResponse('Slot non trouvé', 404);
-    }
-
-    // Vérifier permissions
-    if (!canAccessPLVProject($currentUser['id'], $slot['space_id'], $slot['zone_id'])) {
-        errorResponse('Accès non autorisé', 403);
-    }
-
-    // Construire le chemin de destination
-    $folderName = 'plvid' . str_pad($slot['project_id'], 6, '0', STR_PAD_LEFT);
-    $filename = 'template_' . $slot['format'] . $slot['slot_number'] . '.png';
-    $basePath = dirname(dirname(__DIR__)) . '/plv/';
-    $destPath = $basePath . $folderName . '/' . $filename;
-
-    // Vérifier que le dossier existe
-    $folderPath = $basePath . $folderName . '/';
-    if (!file_exists($folderPath)) {
-        mkdir($folderPath, 0755, true);
-    }
-
-    // Avertissement si slot transparent mais image JPG (pas de canal alpha)
-    $warning = null;
-    if ($slot['is_transparent'] && $mimeType === 'image/jpeg') {
-        $warning = 'Attention: Ce slot est marqué transparent mais le fichier JPG ne supporte pas la transparence.';
-    }
-
-    // Déplacer le fichier (écrase l'existant)
-    if (!move_uploaded_file($file['tmp_name'], $destPath)) {
-        errorResponse('Erreur lors de l\'enregistrement du fichier', 500);
-    }
-
-    // Mettre à jour le slot
-    $stmt = $db->prepare("
-        UPDATE plv_slots 
-        SET is_uploaded = 1, last_upload_at = NOW(), uploaded_by = :user_id
-        WHERE id = :id
+        INSERT INTO plv_upload_logs 
+        (user_id, space_slug, zone_slug, shader_name, file_name, original_name, file_size, ip_address)
+        VALUES 
+        (:user_id, :space_slug, :zone_slug, :shader_name, :file_name, :original_name, :file_size, :ip_address)
     ");
     $stmt->execute([
-        ':user_id' => $currentUser['id'],
-        ':id' => $slotId
+        ':user_id' => $user['id'],
+        ':space_slug' => $spaceSlug,
+        ':zone_slug' => $zoneSlug,
+        ':shader_name' => $shaderName,
+        ':file_name' => $targetFileName,
+        ':original_name' => $originalName,
+        ':file_size' => $fileSize,
+        ':ip_address' => getClientIP()
     ]);
-
-    // Logger l'action
-    logActivity($currentUser['id'], 'plv_image_uploaded', 'plv_slots', $slotId, [
-        'project_id' => $slot['project_id'],
-        'filename' => $filename,
-        'size' => $file['size'],
-        'mime_type' => $mimeType
+    
+    // Log dans activity_logs aussi
+    logActivity($user['id'], 'plv_upload', 'plv', null, [
+        'space_slug' => $spaceSlug,
+        'zone_slug' => $zoneSlug,
+        'shader_name' => $shaderName,
+        'file_name' => $targetFileName
     ]);
-
-    $response = [
-        'message' => 'Image uploadée avec succès',
-        'filename' => $filename,
-        'image_url' => 'https://compagnon.atlantis-city.com/plv/' . $folderName . '/' . $filename . '?v=' . time()
-    ];
-
-    if ($warning) {
-        $response['warning'] = $warning;
-    }
-
-    successResponse($response);
-
+    
 } catch (PDOException $e) {
-    error_log("Erreur plv/upload: " . $e->getMessage());
-    errorResponse('Erreur serveur', 500);
+    error_log("Erreur log upload PLV: " . $e->getMessage());
+    // On ne fait pas échouer l'upload pour un problème de log
 }
+
+// ============================================
+// ✅ RÉPONSE SUCCÈS
+// ============================================
+successResponse([
+    'file_name' => $targetFileName,
+    'shader_name' => $shaderName,
+    'space_slug' => $spaceSlug,
+    'file_size' => $fileSize,
+    'url' => "https://compagnon.atlantis-city.com/plv/{$spaceSlug}/{$targetFileName}?v=" . time()
+], 'Image uploadée avec succès');

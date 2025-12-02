@@ -1,0 +1,506 @@
+/* ============================================
+   📤 POPUPLOAD PLV - ATLANTIS CITY
+   Boutons admin + Modal upload
+   ============================================ */
+
+/* === BOUTONS ADMIN INJECTÉS DANS POPUP === */
+.plv-admin-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.plv-admin-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: "Segoe UI", Roboto, sans-serif;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.plv-admin-btn-upload {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+}
+
+.plv-admin-btn-upload:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.plv-admin-btn-html {
+  background: rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.5);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.plv-admin-btn-html:hover {
+  background: rgba(100, 116, 139, 0.4);
+}
+
+/* Badge admin sous les boutons */
+.plv-admin-badge {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* === MODAL UPLOAD === */
+.plv-upload-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  animation: plvFadeIn 0.3s ease forwards;
+}
+
+@keyframes plvFadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+.plv-upload-modal {
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 60px rgba(59, 130, 246, 0.1);
+  transform: scale(0.9) translateY(20px);
+  animation: plvSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes plvSlideIn {
+  to {
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Header modal */
+.plv-upload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.plv-upload-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.plv-upload-title .icon {
+  font-size: 24px;
+}
+
+.plv-upload-close {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  color: #94a3b8;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.plv-upload-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+  transform: rotate(90deg);
+}
+
+/* Body modal */
+.plv-upload-body {
+  padding: 24px;
+}
+
+/* Info box */
+.plv-upload-info {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.plv-upload-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.plv-upload-info-row:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.plv-upload-info-label {
+  color: #94a3b8;
+}
+
+.plv-upload-info-value {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.plv-upload-info-value.opaque {
+  color: #f59e0b;
+}
+
+.plv-upload-info-value.transparent {
+  color: #06b6d4;
+}
+
+/* Section preview */
+.plv-upload-section {
+  margin-bottom: 20px;
+}
+
+.plv-upload-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+/* Preview images */
+.plv-upload-preview {
+  position: relative;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+}
+
+.plv-upload-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+.plv-upload-preview-placeholder {
+  color: #64748b;
+  font-size: 14px;
+  text-align: center;
+  padding: 20px;
+}
+
+.plv-upload-preview-placeholder .icon {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+/* Zone de drop */
+.plv-upload-dropzone {
+  position: relative;
+  background: rgba(59, 130, 246, 0.05);
+  border: 2px dashed rgba(59, 130, 246, 0.3);
+  border-radius: 12px;
+  padding: 30px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.plv-upload-dropzone:hover,
+.plv-upload-dropzone.dragover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.plv-upload-dropzone.dragover {
+  transform: scale(1.02);
+}
+
+.plv-upload-dropzone-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.plv-upload-dropzone-text {
+  color: #94a3b8;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.plv-upload-dropzone-text strong {
+  color: #3b82f6;
+}
+
+.plv-upload-dropzone-hint {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.plv-upload-dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* New image preview */
+.plv-upload-new-preview {
+  display: none;
+  margin-top: 16px;
+}
+
+.plv-upload-new-preview.show {
+  display: block;
+}
+
+.plv-upload-new-preview-container {
+  position: relative;
+  background: rgba(34, 197, 94, 0.1);
+  border: 2px solid rgba(34, 197, 94, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.plv-upload-new-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 200px;
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
+.plv-upload-new-preview-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.plv-upload-new-preview-remove {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.plv-upload-new-preview-remove:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* Messages de statut */
+.plv-upload-status {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  margin-top: 16px;
+  display: none;
+}
+
+.plv-upload-status.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.plv-upload-status.loading {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+.plv-upload-status.success {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.plv-upload-status.error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* Spinner */
+.plv-upload-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: plvSpin 0.8s linear infinite;
+}
+
+@keyframes plvSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Footer modal */
+.plv-upload-footer {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.plv-upload-btn {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: "Segoe UI", Roboto, sans-serif;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.plv-upload-btn-cancel {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.plv-upload-btn-cancel:hover {
+  background: rgba(100, 116, 139, 0.3);
+}
+
+.plv-upload-btn-submit {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+}
+
+.plv-upload-btn-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.plv-upload-btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Bouton Refresh (apparaît après succès) */
+.plv-upload-btn-refresh {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+  display: none;
+}
+
+.plv-upload-btn-refresh.show {
+  display: flex;
+}
+
+.plv-upload-btn-refresh:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 480px) {
+  .plv-admin-buttons {
+    flex-direction: column;
+  }
+
+  .plv-upload-modal {
+    margin: 10px;
+    max-height: calc(100vh - 20px);
+    border-radius: 16px;
+  }
+
+  .plv-upload-header {
+    padding: 16px 20px;
+  }
+
+  .plv-upload-body {
+    padding: 20px;
+  }
+
+  .plv-upload-footer {
+    flex-direction: column;
+    padding: 16px 20px;
+  }
+
+  .plv-upload-dropzone {
+    padding: 20px 16px;
+  }
+
+  .plv-upload-dropzone-icon {
+    font-size: 36px;
+  }
+}
+
+/* === ANIMATIONS === */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

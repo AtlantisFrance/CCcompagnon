@@ -161,22 +161,55 @@ function validateToken($token) {
 
 /**
  * Récupérer le token depuis les headers ou cookies
+ * ✅ VERSION ROBUSTE pour OVH/Apache
  */
 function getAuthToken() {
-    // Vérifier le header Authorization
-    $headers = getallheaders();
-    $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
-    
-    if (preg_match('/Bearer\s+(.+)$/i', $authHeader, $matches)) {
-        return $matches[1];
+    // === MÉTHODE 1 : getallheaders() ===
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        // Chercher Authorization (avec différentes casses)
+        foreach ($headers as $key => $value) {
+            if (strtolower($key) === 'authorization') {
+                if (preg_match('/Bearer\s+(.+)$/i', $value, $matches)) {
+                    return $matches[1];
+                }
+            }
+        }
     }
     
-    // Vérifier le cookie
+    // === MÉTHODE 2 : $_SERVER (Apache avec mod_rewrite) ===
+    $serverKeys = [
+        'HTTP_AUTHORIZATION',
+        'REDIRECT_HTTP_AUTHORIZATION',
+        'Authorization'
+    ];
+    
+    foreach ($serverKeys as $key) {
+        if (!empty($_SERVER[$key])) {
+            if (preg_match('/Bearer\s+(.+)$/i', $_SERVER[$key], $matches)) {
+                return $matches[1];
+            }
+        }
+    }
+    
+    // === MÉTHODE 3 : apache_request_headers() ===
+    if (function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        foreach ($headers as $key => $value) {
+            if (strtolower($key) === 'authorization') {
+                if (preg_match('/Bearer\s+(.+)$/i', $value, $matches)) {
+                    return $matches[1];
+                }
+            }
+        }
+    }
+    
+    // === MÉTHODE 4 : Cookie ===
     if (isset($_COOKIE['atlantis_token'])) {
         return $_COOKIE['atlantis_token'];
     }
     
-    // Vérifier le paramètre GET (pour certains cas)
+    // === MÉTHODE 5 : Paramètre GET (fallback) ===
     if (isset($_GET['token'])) {
         return $_GET['token'];
     }

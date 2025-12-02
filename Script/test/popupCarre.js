@@ -1,7 +1,7 @@
 /**
  * ============================================
  * ⬜ POPUP CARRE - ATLANTIS CITY
- * Objet: plvcarre_obj
+ * Objet: c1_obj
  * Namespace: carre
  * ============================================
  */
@@ -16,7 +16,7 @@
   // === CONFIGURATION ===
   const CONFIG = {
     // Objet 3D cliquable
-    objectName: "plvcarre_obj",
+    objectName: "c1_obj",
     popupId: "carre-popup-overlay",
 
     // ⚠️ CONFIGURER ICI LE SPACE ET LA ZONE

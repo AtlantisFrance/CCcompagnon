@@ -2,7 +2,7 @@
   const viewer = WALK.getViewer();
 
   const config = {
-    projectId: "00001",
+    projectId: "scenetest",
 
     getImageUrl(fileName) {
       const version = Date.now();
@@ -11,23 +11,22 @@
 
     batchSize: 3,
     textures: {
-      plvcarre_shdr: "11.jpg",
-      plvportrait_shdr: "916.jpg",
-      plvpaysage_shdr: "169.jpg",
+      c1_shdr: "template_C1.png",
+      l1_shdr: "template_L1.png",
+      l2_shdr: "template_L2.png",
+      p1_shdr: "template_P1.png",
     },
-    opaqueList: [],
+    opaqueList: ["c1_shdr", "l1_shdr", "p1_shdr"],
   };
 
   let isLoading = false;
 
-  // Créer le bouton de rechargement
   function createReloadButton() {
     const button = document.createElement("button");
     button.id = "reload-textures-btn";
     button.innerHTML = "🔄 Actualiser PLV";
     button.title = "Recharger les textures depuis le serveur";
 
-    // Styles du bouton
     button.style.cssText = `
       position: fixed;
       top: 20px;
@@ -71,7 +70,6 @@
     console.log("🔘 Bouton rechargement PLV créé");
   }
 
-  // Mettre à jour l'état du bouton
   function updateButtonState(loading, success = null) {
     const button = document.getElementById("reload-textures-btn");
     if (!button) return;
@@ -151,9 +149,8 @@
     });
   }
 
-  // Fonction principale de chargement
   async function loadAllTextures() {
-    console.log(`🚀 Chargement textures OVH PHP (${config.projectId})...`);
+    console.log(`🚀 Chargement textures PLV (${config.projectId})...`);
     updateButtonState(true);
 
     const textureEntries = Object.entries(config.textures);
@@ -187,7 +184,7 @@
 
     const success = errorCount === 0;
     console.log(
-      `✅ OVH terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`
+      `✅ Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`
     );
     updateButtonState(false, success);
   }
@@ -205,10 +202,9 @@
     loadAllTextures();
   });
 
-  // Exposer la fonction pour appel externe
   window.reloadPLVTextures = loadAllTextures;
 
-  console.log("🚀 Module AutoTextures OVH prêt");
+  console.log("🚀 Module AutoTextures PLV prêt");
   console.log(
     "💡 Utilisez window.reloadPLVTextures() ou le bouton pour recharger"
   );

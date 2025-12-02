@@ -1,564 +1,813 @@
 /**
  * ============================================
- * 🎨 CRM MODULE - TEXTURES / PLV
- * Gestion des projets PLV et textures Shapespark
+ * 🎨 CRM ATLANTIS CITY - TEXTURES/PLV MODULE
+ * Gestion des projets PLV par espace
+ * Choix individuel transparent/opaque par slot
+ * Tous les fichiers en .png
  * ============================================
  */
 
-(function() {
-    'use strict';
+(function () {
+  "use strict";
 
-    const CRM = window.CRM;
-    const { CONFIG, state, apiCall, apiUpload } = CRM;
+  const CRM = window.CRM;
+  const {
+    CONFIG,
+    state,
+    apiCall,
+    showToast,
+    openModal,
+    closeModal,
+    formatDate,
+  } = CRM;
 
-    // === PLV STYLES (injected once) ===
-    const PLV_STYLES = `
-        .plv-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 20px;
-        }
-        .plv-project-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            transition: all 0.3s ease;
-        }
-        .plv-project-card:hover {
-            border-color: var(--accent-primary);
-            box-shadow: var(--shadow-glow);
-        }
-        .plv-project-header {
-            padding: 16px 20px;
-            background: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .plv-project-title {
-            font-weight: 600;
-            font-size: 16px;
-        }
-        .plv-project-id {
-            font-size: 12px;
-            color: var(--text-muted);
-            font-family: monospace;
-        }
-        .plv-project-body {
-            padding: 16px 20px;
-        }
-        .plv-project-meta {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 12px;
-        }
-        .plv-project-stats {
-            display: flex;
-            gap: 20px;
-            padding: 12px 0;
-            border-top: 1px solid var(--border-color);
-            margin-top: 12px;
-        }
-        .plv-stat {
-            text-align: center;
-            flex: 1;
-        }
-        .plv-stat-value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--accent-primary);
-        }
-        .plv-stat-label {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-        }
-        .plv-project-actions {
-            display: flex;
-            gap: 8px;
-            padding: 16px 20px;
-            background: var(--bg-tertiary);
-            border-top: 1px solid var(--border-color);
-        }
-        .plv-slot-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 12px;
-            margin-top: 16px;
-        }
-        .plv-slot-card {
-            background: var(--bg-tertiary);
-            border: 2px dashed var(--border-color);
-            border-radius: 12px;
-            padding: 12px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
-        }
-        .plv-slot-card:hover {
-            border-color: var(--accent-primary);
-            background: var(--bg-hover);
-        }
-        .plv-slot-card.has-image {
-            border-style: solid;
-            border-color: var(--success);
-        }
-        .plv-slot-preview {
-            width: 100%;
-            aspect-ratio: 1;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-        .plv-slot-preview img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .plv-slot-preview .placeholder {
-            font-size: 32px;
-            opacity: 0.3;
-        }
-        .plv-slot-label {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .plv-slot-shader {
-            font-size: 10px;
-            color: var(--text-muted);
-            font-family: monospace;
-        }
-        .plv-format-section {
-            margin-bottom: 24px;
-        }
-        .plv-format-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .plv-summary-row {
-            display: flex;
-            gap: 8px;
-            padding: 8px 12px;
-            background: var(--bg-tertiary);
-            border-radius: 8px;
-            font-size: 13px;
-        }
-        .plv-summary-row span {
-            color: var(--text-muted);
-        }
-        .plv-summary-row strong {
-            color: var(--accent-primary);
-        }
-    `;
+  // === LOAD TEXTURES SECTION ===
+  async function loadTextures() {
+    const el = document.querySelector("#section-textures .crm-section-content");
+    el.innerHTML =
+      '<div class="crm-loading"><div class="crm-spinner"></div></div>';
 
-    // === LOAD TEXTURES ===
-    async function loadTextures() {
-        const [spacesRes, projectsRes] = await Promise.all([
-            apiCall('/admin/spaces.php'),
-            apiCall('/plv/projects.php')
-        ]);
+    try {
+      // Charger les espaces
+      const spacesResult = await apiCall("/admin/spaces.php");
+      const spaces = spacesResult.spaces || [];
 
-        const spaces = spacesRes.spaces || [];
-        const projects = projectsRes.projects || [];
-        state.plvProjects = projects;
+      // Charger les projets PLV
+      let plvProjects = [];
+      try {
+        const plvResult = await apiCall("/plv/projects.php");
+        plvProjects = plvResult.projects || [];
+      } catch (e) {
+        console.warn("API PLV non disponible, liste vide");
+      }
 
-        const el = document.querySelector('#section-textures .crm-section-content');
-        el.innerHTML = `
-            <style>${PLV_STYLES}</style>
+      state.data.spaces = spaces;
+      state.plvProjects = plvProjects;
 
-            <div class="crm-card">
-                <div class="crm-card-header">
-                    <h3 class="crm-card-title">🎨 Projets PLV / Textures</h3>
-                    <button class="crm-btn crm-btn-primary" onclick="window.CRM.createPLVProject()">
-                        ➕ Nouveau projet PLV
-                    </button>
-                </div>
-
-                ${projects.length > 0 ? `
-                    <div class="plv-grid" style="padding: 20px;">
-                        ${projects.map(project => `
-                            <div class="plv-project-card">
-                                <div class="plv-project-header">
-                                    <div>
-                                        <div class="plv-project-title">${project.name}</div>
-                                        <div class="plv-project-id">${project.folder_name}</div>
-                                    </div>
-                                    <span class="crm-badge ${project.is_active ? 'crm-badge-success' : 'crm-badge-danger'}">
-                                        ${project.is_active ? 'Actif' : 'Inactif'}
-                                    </span>
-                                </div>
-                                <div class="plv-project-body">
-                                    <div class="plv-project-meta">
-                                        <span class="crm-badge crm-badge-primary">${project.space_name || '—'}</span>
-                                        ${project.zone_name ? `<span class="crm-badge crm-badge-info">${project.zone_name}</span>` : ''}
-                                    </div>
-                                    ${project.description ? `<p style="font-size: 13px; color: var(--text-muted); margin: 0;">${project.description}</p>` : ''}
-                                    <div class="plv-project-stats">
-                                        <div class="plv-stat">
-                                            <div class="plv-stat-value">${project.total_slots || 0}</div>
-                                            <div class="plv-stat-label">Total slots</div>
-                                        </div>
-                                        <div class="plv-stat">
-                                            <div class="plv-stat-value" style="color: var(--success);">${project.uploaded_slots || 0}</div>
-                                            <div class="plv-stat-label">Uploadés</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="plv-project-actions">
-                                    <button class="crm-btn crm-btn-sm crm-btn-primary" onclick="window.CRM.managePLVProject(${project.id})" style="flex: 1;">
-                                        🎨 Gérer les textures
-                                    </button>
-                                    <button class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.deletePLVProject(${project.id})" title="Supprimer">
-                                        🗑️
-                                    </button>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : `
-                    <div class="crm-empty" style="padding: 60px 20px;">
-                        <div style="font-size: 64px; margin-bottom: 20px;">🎨</div>
-                        <h3 style="margin-bottom: 8px;">Aucun projet PLV</h3>
-                        <p style="color: var(--text-muted); margin-bottom: 20px;">Créez votre premier projet pour commencer à gérer les textures Shapespark.</p>
-                        <button class="crm-btn crm-btn-primary" onclick="window.CRM.createPLVProject()">
-                            ➕ Créer un projet PLV
-                        </button>
-                    </div>
-                `}
-            </div>
-        `;
+      renderTexturesSection(spaces, plvProjects);
+    } catch (error) {
+      el.innerHTML =
+        '<div class="crm-empty">' +
+        '<div class="crm-empty-icon">❌</div>' +
+        "<h3>Erreur de chargement</h3>" +
+        "<p>" +
+        error.message +
+        "</p>" +
+        "</div>";
     }
+  }
 
-    // === CREATE PLV PROJECT ===
-    async function createPLVProject() {
-        const spacesRes = await apiCall('/admin/spaces.php');
-        const spaces = spacesRes.spaces || [];
+  // === RENDER MAIN VIEW ===
+  function renderTexturesSection(spaces, plvProjects) {
+    const el = document.querySelector("#section-textures .crm-section-content");
 
-        CRM.openModal('➕ Nouveau projet PLV', `
-            <form id="create-plv-form">
-                <div class="crm-form-group">
-                    <label class="crm-form-label">Nom du projet</label>
-                    <input type="text" class="crm-form-input" name="name" placeholder="Showroom Principal" required>
-                </div>
-                
-                <div class="crm-form-group">
-                    <label class="crm-form-label">Description (optionnel)</label>
-                    <textarea class="crm-form-textarea" name="description" placeholder="Description du projet..."></textarea>
-                </div>
-                
-                <div class="crm-form-row">
-                    <div class="crm-form-group">
-                        <label class="crm-form-label">Espace Shapespark</label>
-                        <select class="crm-form-select" name="space_id" required onchange="window.CRM.onPLVSpaceChange(this.value)">
-                            <option value="">-- Sélectionner --</option>
-                            ${spaces.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="crm-form-group">
-                        <label class="crm-form-label">Zone (optionnel)</label>
-                        <select class="crm-form-select" name="zone_id" id="plv-zone-select">
-                            <option value="">Tout l'espace</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div style="background: var(--bg-tertiary); padding: 20px; border-radius: 12px; margin-top: 20px;">
-                    <h4 style="margin: 0 0 16px; font-size: 14px; color: var(--text-secondary);">📐 Configuration des slots</h4>
-                    
-                    <div class="crm-form-row">
-                        <div class="crm-form-group" style="margin-bottom: 0;">
-                            <label class="crm-form-label">Carrés opaques</label>
-                            <input type="number" class="crm-form-input" name="carre_opaque" value="0" min="0" max="100" onchange="window.CRM.updatePLVSummary()">
-                        </div>
-                        <div class="crm-form-group" style="margin-bottom: 0;">
-                            <label class="crm-form-label">Carrés transparents</label>
-                            <input type="number" class="crm-form-input" name="carre_transparent" value="0" min="0" max="100" onchange="window.CRM.updatePLVSummary()">
-                        </div>
-                    </div>
-                    
-                    <div class="crm-form-row" style="margin-top: 16px;">
-                        <div class="crm-form-group" style="margin-bottom: 0;">
-                            <label class="crm-form-label">Portraits opaques</label>
-                            <input type="number" class="crm-form-input" name="portrait_opaque" value="0" min="0" max="100" onchange="window.CRM.updatePLVSummary()">
-                        </div>
-                        <div class="crm-form-group" style="margin-bottom: 0;">
-                            <label class="crm-form-label">Portraits transparents</label>
-                            <input type="number" class="crm-form-input" name="portrait_transparent" value="0" min="0" max="100" onchange="window.CRM.updatePLVSummary()">
-                        </div>
-                    </div>
-                    
-                    <div class="crm-form-row" style="margin-top: 16px;">
-                        <div class="crm-form-group" style="margin-bottom: 0;">
-                            <label class="crm-form-label">Paysages opaques</label>
-                            <input type="number" class="crm-form-input" name="paysage_opaque" value="0" min="0" max="100" onchange="window.CRM.updatePLVSummary()">
-                        </div>
-                        <div class="crm-form-group" style="margin-bottom: 0;">
-                            <label class="crm-form-label">Paysages transparents</label>
-                            <input type="number" class="crm-form-input" name="paysage_transparent" value="0" min="0" max="100" onchange="window.CRM.updatePLVSummary()">
-                        </div>
-                    </div>
-                    
-                    <div id="plv-summary" class="plv-summary-row" style="margin-top: 16px;">
-                        <span>Total:</span> <strong>0 slots</strong>
-                    </div>
-                </div>
-            </form>
-        `, `
-            <button class="crm-btn crm-btn-secondary" onclick="window.CRM.closeModal()">Annuler</button>
-            <button class="crm-btn crm-btn-primary" onclick="window.CRM.saveNewPLVProject()">🎨 Créer le projet</button>
-        `);
-    }
-
-    async function onPLVSpaceChange(spaceId) {
-        const zoneSelect = document.getElementById('plv-zone-select');
-        if (!spaceId) {
-            zoneSelect.innerHTML = '<option value="">Tout l\'espace</option>';
-            return;
-        }
-
-        try {
-            const result = await apiCall(`/admin/zones.php?space_id=${spaceId}`);
-            const zones = result.zones || [];
-            zoneSelect.innerHTML = `
-                <option value="">Tout l'espace</option>
-                ${zones.map(z => `<option value="${z.id}">${z.name}</option>`).join('')}
-            `;
-        } catch (error) {
-            console.error('Error loading zones:', error);
-        }
-    }
-
-    function updatePLVSummary() {
-        const form = document.getElementById('create-plv-form');
-        if (!form) return;
-
-        const getValue = (name) => parseInt(form.querySelector(`[name="${name}"]`)?.value || 0);
-
-        const total = getValue('carre_opaque') + getValue('carre_transparent') +
-                      getValue('portrait_opaque') + getValue('portrait_transparent') +
-                      getValue('paysage_opaque') + getValue('paysage_transparent');
-
-        const summaryEl = document.getElementById('plv-summary');
-        if (summaryEl) {
-            summaryEl.innerHTML = `<span>Total:</span> <strong>${total} slot${total > 1 ? 's' : ''}</strong>`;
-        }
-    }
-
-    async function saveNewPLVProject() {
-        const form = document.getElementById('create-plv-form');
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData);
-
-        // Construire l'objet slots_config
-        data.slots_config = {
-            carre_opaque: parseInt(data.carre_opaque) || 0,
-            carre_transparent: parseInt(data.carre_transparent) || 0,
-            portrait_opaque: parseInt(data.portrait_opaque) || 0,
-            portrait_transparent: parseInt(data.portrait_transparent) || 0,
-            paysage_opaque: parseInt(data.paysage_opaque) || 0,
-            paysage_transparent: parseInt(data.paysage_transparent) || 0
-        };
-
-        // Nettoyer les champs individuels
-        delete data.carre_opaque;
-        delete data.carre_transparent;
-        delete data.portrait_opaque;
-        delete data.portrait_transparent;
-        delete data.paysage_opaque;
-        delete data.paysage_transparent;
-
-        // Vérifier qu'il y a au moins un slot
-        const totalSlots = Object.values(data.slots_config).reduce((a, b) => a + b, 0);
-        if (totalSlots === 0) {
-            CRM.showToast('Veuillez configurer au moins un slot', 'warning');
-            return;
-        }
-
-        try {
-            await apiCall('/plv/projects.php', 'POST', data);
-            CRM.showToast('Projet PLV créé avec succès', 'success');
-            CRM.closeModal();
-            loadTextures();
-        } catch (error) {
-            CRM.showToast(error.message, 'error');
-        }
-    }
-
-    // === MANAGE PLV PROJECT ===
-    async function managePLVProject(projectId) {
-        try {
-            const result = await apiCall(`/plv/projects.php?id=${projectId}`);
-            const project = result.project || result;
-            state.currentPLVProject = project;
-
-            const slotsRes = await apiCall(`/plv/slots.php?project_id=${projectId}`);
-            const slots = slotsRes;
-
-            CRM.openModal(`🎨 ${project.name}`, `
-                <style>${PLV_STYLES}</style>
-                <div style="max-height: 70vh; overflow-y: auto;">
-                    <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-                        <span class="crm-badge crm-badge-primary">${project.space_name || '—'}</span>
-                        ${project.zone_name ? `<span class="crm-badge crm-badge-info">${project.zone_name}</span>` : ''}
-                        <span class="crm-badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">${project.folder_name}</span>
-                    </div>
-                    
-                    ${slots.carres && slots.carres.length > 0 ? `
-                        <div class="plv-format-section">
-                            <div class="plv-format-title">
-                                <span>⬛</span> Carrés (${slots.carres.length})
-                            </div>
-                            <div class="plv-slot-grid">
-                                ${slots.carres.map(slot => renderSlotCard(slot, project)).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                    
-                    ${slots.portraits && slots.portraits.length > 0 ? `
-                        <div class="plv-format-section">
-                            <div class="plv-format-title">
-                                <span>📱</span> Portraits (${slots.portraits.length})
-                            </div>
-                            <div class="plv-slot-grid">
-                                ${slots.portraits.map(slot => renderSlotCard(slot, project)).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                    
-                    ${slots.paysages && slots.paysages.length > 0 ? `
-                        <div class="plv-format-section">
-                            <div class="plv-format-title">
-                                <span>🖼️</span> Paysages (${slots.paysages.length})
-                            </div>
-                            <div class="plv-slot-grid">
-                                ${slots.paysages.map(slot => renderSlotCard(slot, project)).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-                
-                <input type="file" id="plv-upload-input" accept="image/jpeg,image/png,image/webp" style="display: none;" onchange="window.CRM.handlePLVUpload(event)">
-            `, `
-                <button class="crm-btn crm-btn-secondary" onclick="window.CRM.closeModal()">Fermer</button>
-            `);
-        } catch (error) {
-            CRM.showToast(error.message, 'error');
-        }
-    }
-
-    function renderSlotCard(slot, project) {
-        const imageUrl = slot.is_uploaded 
-            ? `https://compagnon.atlantis-city.com/plv/${project.folder_name}/${slot.filename}?v=${Date.now()}`
-            : null;
-
-        const transparentIcon = slot.is_transparent ? '🔲' : '⬛';
-
-        return `
-            <div class="plv-slot-card ${slot.is_uploaded ? 'has-image' : ''}" 
-                 onclick="window.CRM.triggerPLVUpload(${slot.id})"
-                 title="Cliquer pour uploader">
-                <div class="plv-slot-preview">
-                    ${imageUrl 
-                        ? `<img src="${imageUrl}" alt="${slot.label}">` 
-                        : `<span class="placeholder">📷</span>`}
-                </div>
-                <div class="plv-slot-label">${transparentIcon} ${slot.label}</div>
-                <div class="plv-slot-shader">${slot.shader_name}</div>
-            </div>
-        `;
-    }
-
-    function triggerPLVUpload(slotId) {
-        const input = document.getElementById('plv-upload-input');
-        if (input) {
-            input.dataset.slotId = slotId;
-            input.click();
-        }
-    }
-
-    async function handlePLVUpload(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const slotId = event.target.dataset.slotId;
-        if (!slotId) {
-            CRM.showToast('Erreur: slot non identifié', 'error');
-            return;
-        }
-
-        // Vérifier le type
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(file.type)) {
-            CRM.showToast('Format non supporté. Utilisez JPG, PNG ou WebP.', 'error');
-            return;
-        }
-
-        // Vérifier la taille (10 Mo max)
-        if (file.size > 10 * 1024 * 1024) {
-            CRM.showToast('Fichier trop volumineux (max 10 Mo)', 'error');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('slot_id', slotId);
-        formData.append('image', file);
-
-        try {
-            CRM.showToast('Upload en cours...', 'info');
-            await apiUpload('/plv/upload.php', formData);
-            CRM.showToast('Image uploadée avec succès', 'success');
-
-            // Rafraîchir la modal
-            if (state.currentPLVProject) {
-                managePLVProject(state.currentPLVProject.id);
-            }
-        } catch (error) {
-            CRM.showToast(error.message, 'error');
-        }
-
-        // Reset input
-        event.target.value = '';
-    }
-
-    // === DELETE PLV PROJECT ===
-    async function deletePLVProject(projectId) {
-        if (!confirm('Voulez-vous vraiment supprimer ce projet PLV ?\n\nToutes les images uploadées seront supprimées.')) return;
-
-        try {
-            await apiCall(`/plv/projects.php?id=${projectId}`, 'DELETE');
-            CRM.showToast('Projet PLV supprimé', 'success');
-            loadTextures();
-        } catch (error) {
-            CRM.showToast(error.message, 'error');
-        }
-    }
-
-    // === EXPOSE TO WINDOW.CRM ===
-    Object.assign(CRM, {
-        loadTextures,
-        createPLVProject,
-        onPLVSpaceChange,
-        updatePLVSummary,
-        saveNewPLVProject,
-        managePLVProject,
-        triggerPLVUpload,
-        handlePLVUpload,
-        deletePLVProject
+    // Grouper les projets par espace
+    const projectsBySpace = {};
+    plvProjects.forEach(function (p) {
+      if (!projectsBySpace[p.space_id]) projectsBySpace[p.space_id] = [];
+      projectsBySpace[p.space_id].push(p);
     });
 
-    console.log('✅ CRM Module Textures chargé');
+    var spacesHtml = "";
+    spaces.forEach(function (space) {
+      const spaceProjects = projectsBySpace[space.id] || [];
+
+      var projectsHtml = "";
+      if (spaceProjects.length > 0) {
+        projectsHtml = '<div class="plv-projects-list">';
+        spaceProjects.forEach(function (project) {
+          projectsHtml +=
+            '<div class="plv-project-item">' +
+            '<div class="plv-project-info">' +
+            '<span class="plv-project-name">' +
+            project.name +
+            "</span>" +
+            '<span class="plv-project-details">' +
+            formatProjectSlots(project) +
+            "</span>" +
+            "</div>" +
+            '<div class="plv-project-actions">' +
+            '<button class="crm-btn crm-btn-sm crm-btn-secondary" onclick="window.CRM.viewPLVCode(' +
+            project.id +
+            ')" title="Voir le code">📋 Code</button>' +
+            '<button class="crm-btn crm-btn-sm crm-btn-danger crm-btn-icon" onclick="window.CRM.deletePLVProject(' +
+            project.id +
+            ')" title="Supprimer">🗑️</button>' +
+            "</div>" +
+            "</div>";
+        });
+        projectsHtml += "</div>";
+      }
+
+      spacesHtml +=
+        '<div class="plv-space-card">' +
+        '<div class="plv-space-header">' +
+        '<div class="plv-space-info">' +
+        '<span class="plv-space-icon">📦</span>' +
+        "<div>" +
+        '<div class="plv-space-name">' +
+        space.name +
+        "</div>" +
+        '<div class="plv-space-slug">' +
+        space.slug +
+        "</div>" +
+        "</div>" +
+        "</div>" +
+        '<div class="plv-space-actions">' +
+        (spaceProjects.length > 0
+          ? '<span class="crm-badge crm-badge-success">' +
+            spaceProjects.length +
+            " projet" +
+            (spaceProjects.length > 1 ? "s" : "") +
+            "</span>"
+          : '<span class="crm-badge crm-badge-info">Aucun projet</span>') +
+        '<button class="crm-btn crm-btn-sm crm-btn-primary" onclick="window.CRM.createPLVProject(' +
+        space.id +
+        ')">➕ Ajouter PLV</button>' +
+        "</div>" +
+        "</div>" +
+        projectsHtml +
+        "</div>";
+    });
+
+    el.innerHTML =
+      '<div class="crm-card">' +
+      '<div class="crm-card-header">' +
+      '<h3 class="crm-card-title">🎨 Projets PLV par Espace</h3>' +
+      '<button class="crm-btn crm-btn-primary" onclick="window.CRM.createPLVProject()">➕ Nouveau projet PLV</button>' +
+      "</div>" +
+      (spaces.length > 0
+        ? '<div class="plv-spaces-list">' + spacesHtml + "</div>"
+        : '<div class="crm-empty"><div class="crm-empty-icon">📦</div><h3>Aucun espace</h3><p>Créez d\'abord un espace dans la section Espaces</p></div>') +
+      "</div>" +
+      "<style>" +
+      ".plv-spaces-list { display: flex; flex-direction: column; gap: 16px; }" +
+      ".plv-space-card { background: var(--bg-tertiary); border-radius: var(--radius-md); overflow: hidden; }" +
+      ".plv-space-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: rgba(59, 130, 246, 0.1); border-bottom: 1px solid var(--border-color); }" +
+      ".plv-space-info { display: flex; align-items: center; gap: 12px; }" +
+      ".plv-space-icon { font-size: 24px; }" +
+      ".plv-space-name { font-weight: 600; font-size: 16px; }" +
+      ".plv-space-slug { font-size: 12px; color: var(--text-muted); font-family: monospace; }" +
+      ".plv-space-actions { display: flex; align-items: center; gap: 10px; }" +
+      ".plv-projects-list { padding: 12px; display: flex; flex-direction: column; gap: 8px; }" +
+      ".plv-project-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-color); }" +
+      ".plv-project-item:hover { border-color: var(--accent-primary); }" +
+      ".plv-project-name { font-weight: 500; }" +
+      ".plv-project-details { font-size: 12px; color: var(--text-muted); display: block; margin-top: 4px; }" +
+      ".plv-project-actions { display: flex; gap: 8px; }" +
+      "</style>";
+  }
+
+  // === FORMAT PROJECT SLOTS FOR DISPLAY ===
+  function formatProjectSlots(project) {
+    var slots = [];
+    try {
+      slots = JSON.parse(project.slots_config || "[]");
+    } catch (e) {
+      slots = [];
+    }
+
+    var carres = 0,
+      paysages = 0,
+      portraits = 0;
+    var transparents = 0;
+
+    slots.forEach(function (slot) {
+      if (slot.format === "carre") carres++;
+      if (slot.format === "paysage") paysages++;
+      if (slot.format === "portrait") portraits++;
+      if (slot.transparent) transparents++;
+    });
+
+    var parts = [];
+    if (carres > 0) parts.push(carres + " carré" + (carres > 1 ? "s" : ""));
+    if (paysages > 0)
+      parts.push(paysages + " paysage" + (paysages > 1 ? "s" : ""));
+    if (portraits > 0)
+      parts.push(portraits + " portrait" + (portraits > 1 ? "s" : ""));
+
+    var total = slots.length;
+    var opaques = total - transparents;
+
+    if (total === 0) return "Aucun slot";
+
+    return (
+      parts.join(", ") +
+      " • " +
+      transparents +
+      " transparent" +
+      (transparents > 1 ? "s" : "") +
+      ", " +
+      opaques +
+      " opaque" +
+      (opaques > 1 ? "s" : "")
+    );
+  }
+
+  // === CREATE PLV PROJECT MODAL - STEP 1 ===
+  function createPLVProject(preselectedSpaceId) {
+    preselectedSpaceId = preselectedSpaceId || null;
+    const spaces = state.data.spaces || [];
+
+    var spacesOptions = '<option value="">Sélectionner un espace</option>';
+    spaces.forEach(function (s) {
+      spacesOptions +=
+        '<option value="' +
+        s.id +
+        '" data-slug="' +
+        s.slug +
+        '"' +
+        (preselectedSpaceId == s.id ? " selected" : "") +
+        ">" +
+        s.name +
+        " (" +
+        s.slug +
+        ")</option>";
+    });
+
+    openModal(
+      "➕ Nouveau projet PLV - Étape 1/2",
+      '<form id="create-plv-form-step1">' +
+        '<div class="crm-form-group">' +
+        '<label class="crm-form-label">Espace Shapespark *</label>' +
+        '<select class="crm-form-select" name="space_id" id="plv-space-select" required>' +
+        spacesOptions +
+        "</select>" +
+        "</div>" +
+        '<div class="crm-form-group">' +
+        '<label class="crm-form-label">Nom du projet *</label>' +
+        '<input type="text" class="crm-form-input" name="name" placeholder="Ex: PLV Salon Principal" required>' +
+        "</div>" +
+        '<div class="crm-card" style="margin-top: 20px; padding: 16px;">' +
+        '<h4 style="margin-bottom: 16px;">🎯 Nombre de slots par format</h4>' +
+        '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">' +
+        '<div class="crm-form-group" style="margin-bottom: 0;">' +
+        '<label class="crm-form-label">🟦 Carrés (1:1)</label>' +
+        '<input type="number" class="crm-form-input" name="nb_carres" min="0" max="100" value="0">' +
+        "</div>" +
+        '<div class="crm-form-group" style="margin-bottom: 0;">' +
+        '<label class="crm-form-label">🌄 Paysages (16:9)</label>' +
+        '<input type="number" class="crm-form-input" name="nb_paysages" min="0" max="100" value="0">' +
+        "</div>" +
+        '<div class="crm-form-group" style="margin-bottom: 0;">' +
+        '<label class="crm-form-label">🖼️ Portraits (9:16)</label>' +
+        '<input type="number" class="crm-form-input" name="nb_portraits" min="0" max="100" value="0">' +
+        "</div>" +
+        "</div>" +
+        "</div>" +
+        "</form>",
+      '<button class="crm-btn crm-btn-secondary" onclick="window.CRM.closeModal()">Annuler</button>' +
+        '<button class="crm-btn crm-btn-primary" onclick="window.CRM.goToPLVStep2()">Suivant →</button>'
+    );
+  }
+
+  // === GO TO STEP 2 ===
+  function goToPLVStep2() {
+    var form = document.getElementById("create-plv-form-step1");
+    var spaceSelect = document.getElementById("plv-space-select");
+    var selectedOption = spaceSelect.options[spaceSelect.selectedIndex];
+
+    var spaceId = spaceSelect.value;
+    var spaceSlug = selectedOption ? selectedOption.dataset.slug : "";
+    var projectName = form.querySelector('[name="name"]').value.trim();
+
+    var nbCarres =
+      parseInt(form.querySelector('[name="nb_carres"]').value) || 0;
+    var nbPaysages =
+      parseInt(form.querySelector('[name="nb_paysages"]').value) || 0;
+    var nbPortraits =
+      parseInt(form.querySelector('[name="nb_portraits"]').value) || 0;
+
+    // Validation
+    if (!spaceId) {
+      showToast("Veuillez sélectionner un espace", "error");
+      return;
+    }
+    if (!projectName) {
+      showToast("Veuillez entrer un nom de projet", "error");
+      return;
+    }
+    var total = nbCarres + nbPaysages + nbPortraits;
+    if (total === 0) {
+      showToast("Veuillez définir au moins un slot", "error");
+      return;
+    }
+
+    // Stocker les données pour l'étape 2
+    state.plvDraft = {
+      space_id: spaceId,
+      space_slug: spaceSlug,
+      name: projectName,
+      nb_carres: nbCarres,
+      nb_paysages: nbPaysages,
+      nb_portraits: nbPortraits,
+    };
+
+    // Afficher étape 2
+    showPLVStep2();
+  }
+
+  // === SHOW STEP 2 ===
+  function showPLVStep2() {
+    var draft = state.plvDraft;
+
+    // Générer la liste des slots
+    var slotsHtml = "";
+
+    // Carrés
+    for (var i = 1; i <= draft.nb_carres; i++) {
+      slotsHtml += createSlotRow("carre", "c", i, "C", "🟦");
+    }
+
+    // Paysages
+    for (var i = 1; i <= draft.nb_paysages; i++) {
+      slotsHtml += createSlotRow("paysage", "l", i, "L", "🌄");
+    }
+
+    // Portraits
+    for (var i = 1; i <= draft.nb_portraits; i++) {
+      slotsHtml += createSlotRow("portrait", "p", i, "P", "🖼️");
+    }
+
+    var total = draft.nb_carres + draft.nb_paysages + draft.nb_portraits;
+
+    openModal(
+      "➕ Nouveau projet PLV - Étape 2/2",
+      '<div style="margin-bottom: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">' +
+        "<strong>" +
+        draft.name +
+        "</strong> • Espace: " +
+        draft.space_slug +
+        " • " +
+        total +
+        " slots" +
+        "</div>" +
+        '<p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">' +
+        "🔲 Cochez les slots qui doivent supporter la <strong>transparence (alpha)</strong>.<br>" +
+        "Les slots non cochés seront traités comme <strong>opaques</strong>." +
+        "</p>" +
+        '<div id="plv-slots-list" style="max-height: 400px; overflow-y: auto;">' +
+        '<table class="crm-table" style="margin: 0;">' +
+        "<thead>" +
+        "<tr>" +
+        '<th style="width: 50px;">Format</th>' +
+        "<th>Shader</th>" +
+        "<th>Fichier</th>" +
+        '<th style="width: 120px; text-align: center;">Transparent ?</th>' +
+        "</tr>" +
+        "</thead>" +
+        "<tbody>" +
+        slotsHtml +
+        "</tbody>" +
+        "</table>" +
+        "</div>" +
+        '<div style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; display: flex; justify-content: space-between;">' +
+        "<span>Résumé :</span>" +
+        '<span id="plv-step2-summary">0 transparents, ' +
+        total +
+        " opaques</span>" +
+        "</div>",
+      '<button class="crm-btn crm-btn-secondary" onclick="window.CRM.backToPLVStep1()">← Retour</button>' +
+        '<button class="crm-btn crm-btn-primary" onclick="window.CRM.savePLVProject()">Créer le projet</button>'
+    );
+
+    updateStep2Summary();
+  }
+
+  // === CREATE SLOT ROW ===
+  function createSlotRow(format, prefix, index, filePrefix, icon) {
+    var shaderName = prefix + index + "_shdr";
+    var fileName = "template_" + filePrefix + index + ".png";
+
+    return (
+      "<tr>" +
+      '<td style="text-align: center; font-size: 20px;">' +
+      icon +
+      "</td>" +
+      '<td><code style="background: var(--bg-primary); padding: 4px 8px; border-radius: 4px;">' +
+      shaderName +
+      "</code></td>" +
+      '<td><code style="background: var(--bg-primary); padding: 4px 8px; border-radius: 4px;">' +
+      fileName +
+      "</code></td>" +
+      '<td style="text-align: center;">' +
+      '<label style="cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">' +
+      '<input type="checkbox" class="plv-transparent-check" data-format="' +
+      format +
+      '" data-shader="' +
+      shaderName +
+      '" data-file="' +
+      fileName +
+      '" onchange="window.CRM.updateStep2Summary()">' +
+      '<span class="plv-check-label">🔲</span>' +
+      "</label>" +
+      "</td>" +
+      "</tr>"
+    );
+  }
+
+  // === UPDATE STEP 2 SUMMARY ===
+  function updateStep2Summary() {
+    var checkboxes = document.querySelectorAll(".plv-transparent-check");
+    var transparents = 0;
+    var total = checkboxes.length;
+
+    checkboxes.forEach(function (cb) {
+      if (cb.checked) {
+        transparents++;
+        cb.parentElement.querySelector(".plv-check-label").textContent = "✅";
+      } else {
+        cb.parentElement.querySelector(".plv-check-label").textContent = "🔲";
+      }
+    });
+
+    var opaques = total - transparents;
+    var summary = document.getElementById("plv-step2-summary");
+    if (summary) {
+      summary.innerHTML =
+        '<span style="color: var(--info);">' +
+        transparents +
+        " transparent" +
+        (transparents > 1 ? "s" : "") +
+        "</span>, " +
+        '<span style="color: var(--warning);">' +
+        opaques +
+        " opaque" +
+        (opaques > 1 ? "s" : "") +
+        "</span>";
+    }
+  }
+
+  // === BACK TO STEP 1 ===
+  function backToPLVStep1() {
+    var draft = state.plvDraft;
+    createPLVProject(draft.space_id);
+
+    // Remettre les valeurs
+    setTimeout(function () {
+      var form = document.getElementById("create-plv-form-step1");
+      if (form) {
+        form.querySelector('[name="name"]').value = draft.name;
+        form.querySelector('[name="nb_carres"]').value = draft.nb_carres;
+        form.querySelector('[name="nb_paysages"]').value = draft.nb_paysages;
+        form.querySelector('[name="nb_portraits"]').value = draft.nb_portraits;
+      }
+    }, 100);
+  }
+
+  // === SAVE PLV PROJECT ===
+  async function savePLVProject() {
+    var draft = state.plvDraft;
+    var checkboxes = document.querySelectorAll(".plv-transparent-check");
+
+    // Construire la liste des slots
+    var slots = [];
+    checkboxes.forEach(function (cb) {
+      slots.push({
+        format: cb.dataset.format,
+        shader: cb.dataset.shader,
+        file: cb.dataset.file,
+        transparent: cb.checked,
+      });
+    });
+
+    var data = {
+      space_id: draft.space_id,
+      space_slug: draft.space_slug,
+      name: draft.name,
+      slots_config: JSON.stringify(slots),
+    };
+
+    try {
+      await apiCall("/plv/projects.php", "POST", data);
+      showToast("Projet PLV créé avec succès !", "success");
+      closeModal();
+      state.plvDraft = null;
+      loadTextures();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  // === VIEW PLV CODE ===
+  async function viewPLVCode(projectId) {
+    try {
+      var result = await apiCall("/plv/projects.php?id=" + projectId);
+      var project = result.project || result;
+
+      var code = generateAutotexturesCode(project);
+
+      openModal(
+        "📋 Code autotextures.js",
+        '<div style="margin-bottom: 16px;">' +
+          '<p style="color: var(--text-secondary); margin-bottom: 8px;">' +
+          "Projet: <strong>" +
+          project.name +
+          "</strong> | " +
+          "Espace: <strong>" +
+          (project.space_slug || project.folder_name) +
+          "</strong>" +
+          "</p>" +
+          '<p style="color: var(--text-muted); font-size: 12px;">' +
+          "Copiez ce code dans votre fichier autotextures.js pour Shapespark" +
+          "</p>" +
+          "</div>" +
+          '<div style="position: relative;">' +
+          '<button class="crm-btn crm-btn-sm crm-btn-primary" onclick="window.CRM.copyPLVCode()" style="position: absolute; top: 8px; right: 8px; z-index: 10;">📋 Copier</button>' +
+          '<textarea id="plv-code-output" readonly style="width: 100%; height: 400px; background: #0d1117; color: #22c55e; font-family: Consolas, Monaco, monospace; font-size: 12px; padding: 16px; border: 1px solid var(--border-color); border-radius: 8px; resize: vertical;">' +
+          escapeHtml(code) +
+          "</textarea>" +
+          "</div>",
+        '<button class="crm-btn crm-btn-secondary" onclick="window.CRM.closeModal()">Fermer</button>'
+      );
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  // === GENERATE AUTOTEXTURES CODE ===
+  function generateAutotexturesCode(project) {
+    var projectFolder = project.space_slug || project.folder_name || "project";
+
+    var slots = [];
+    try {
+      slots = JSON.parse(project.slots_config || "[]");
+    } catch (e) {
+      slots = [];
+    }
+
+    // Construire l'objet textures et opaqueList
+    var texturesLines = [];
+    var opaqueList = [];
+
+    slots.forEach(function (slot) {
+      texturesLines.push("      '" + slot.shader + "': '" + slot.file + "'");
+      if (!slot.transparent) {
+        opaqueList.push("'" + slot.shader + "'");
+      }
+    });
+
+    var texturesStr = texturesLines.join(",\n");
+    var opaqueListStr =
+      opaqueList.length > 0 ? "[" + opaqueList.join(", ") + "]" : "[]";
+
+    return (
+      "(function () {\n" +
+      "  const viewer = WALK.getViewer();\n" +
+      "\n" +
+      "  const config = {\n" +
+      '    projectId: "' +
+      projectFolder +
+      '",\n' +
+      "\n" +
+      "    getImageUrl(fileName) {\n" +
+      "      const version = Date.now();\n" +
+      "      return `https://compagnon.atlantis-city.com/plv/image.php?project=${this.projectId}&file=${fileName}&v=${version}`;\n" +
+      "    },\n" +
+      "\n" +
+      "    batchSize: 3,\n" +
+      "    textures: {\n" +
+      texturesStr +
+      "\n" +
+      "    },\n" +
+      "    opaqueList: " +
+      opaqueListStr +
+      ",\n" +
+      "  };\n" +
+      "\n" +
+      "  let isLoading = false;\n" +
+      "\n" +
+      "  function createReloadButton() {\n" +
+      '    const button = document.createElement("button");\n' +
+      '    button.id = "reload-textures-btn";\n' +
+      '    button.innerHTML = "🔄 Actualiser PLV";\n' +
+      '    button.title = "Recharger les textures depuis le serveur";\n' +
+      "\n" +
+      "    button.style.cssText = `\n" +
+      "      position: fixed;\n" +
+      "      top: 20px;\n" +
+      "      left: 50%;\n" +
+      "      transform: translateX(-50%);\n" +
+      "      z-index: 10000;\n" +
+      "      padding: 10px 20px;\n" +
+      "      font-size: 14px;\n" +
+      "      font-weight: 600;\n" +
+      '      font-family: "Segoe UI", Roboto, sans-serif;\n' +
+      "      color: white;\n" +
+      "      background: linear-gradient(135deg, #376ab3 0%, #2a5694 100%);\n" +
+      "      border: 2px solid rgba(255, 255, 255, 0.3);\n" +
+      "      border-radius: 25px;\n" +
+      "      cursor: pointer;\n" +
+      "      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);\n" +
+      "      transition: all 0.3s ease;\n" +
+      "    `;\n" +
+      "\n" +
+      '    button.addEventListener("mouseenter", () => {\n' +
+      "      if (!isLoading) {\n" +
+      '        button.style.transform = "translateX(-50%) translateY(-2px)";\n' +
+      '        button.style.boxShadow = "0 6px 20px rgba(55, 106, 179, 0.5)";\n' +
+      "      }\n" +
+      "    });\n" +
+      "\n" +
+      '    button.addEventListener("mouseleave", () => {\n' +
+      "      if (!isLoading) {\n" +
+      '        button.style.transform = "translateX(-50%)";\n' +
+      '        button.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.3)";\n' +
+      "      }\n" +
+      "    });\n" +
+      "\n" +
+      '    button.addEventListener("click", () => {\n' +
+      "      if (!isLoading) {\n" +
+      "        loadAllTextures();\n" +
+      "      }\n" +
+      "    });\n" +
+      "\n" +
+      "    document.body.appendChild(button);\n" +
+      '    console.log("🔘 Bouton rechargement PLV créé");\n' +
+      "  }\n" +
+      "\n" +
+      "  function updateButtonState(loading, success = null) {\n" +
+      '    const button = document.getElementById("reload-textures-btn");\n' +
+      "    if (!button) return;\n" +
+      "\n" +
+      "    isLoading = loading;\n" +
+      "\n" +
+      "    if (loading) {\n" +
+      '      button.innerHTML = "⏳ Chargement...";\n' +
+      '      button.style.cursor = "wait";\n' +
+      '      button.style.opacity = "0.7";\n' +
+      "    } else if (success === true) {\n" +
+      '      button.innerHTML = "✅ Actualisé !";\n' +
+      '      button.style.background = "linear-gradient(135deg, #28a745 0%, #1e7e34 100%)";\n' +
+      "      setTimeout(() => {\n" +
+      '        button.innerHTML = "🔄 Actualiser PLV";\n' +
+      '        button.style.background = "linear-gradient(135deg, #376ab3 0%, #2a5694 100%)";\n' +
+      '        button.style.cursor = "pointer";\n' +
+      '        button.style.opacity = "1";\n' +
+      "      }, 2000);\n" +
+      "    } else if (success === false) {\n" +
+      '      button.innerHTML = "❌ Erreur";\n' +
+      '      button.style.background = "linear-gradient(135deg, #dc3545 0%, #b02a37 100%)";\n' +
+      "      setTimeout(() => {\n" +
+      '        button.innerHTML = "🔄 Actualiser PLV";\n' +
+      '        button.style.background = "linear-gradient(135deg, #376ab3 0%, #2a5694 100%)";\n' +
+      '        button.style.cursor = "pointer";\n' +
+      '        button.style.opacity = "1";\n' +
+      "      }, 2000);\n" +
+      "    }\n" +
+      "  }\n" +
+      "\n" +
+      "  function loadSingleTextureAsync(material, imageUrl, opaque = false) {\n" +
+      "    return new Promise((resolve, reject) => {\n" +
+      "      const img = new Image();\n" +
+      '      img.crossOrigin = "anonymous";\n' +
+      "\n" +
+      "      img.onload = () => {\n" +
+      "        try {\n" +
+      "          const checkForAlpha = !opaque;\n" +
+      "          const texture = viewer.createTextureFromHtmlImage(img, checkForAlpha);\n" +
+      "          if (texture) {\n" +
+      "            material.baseColorTexture = texture;\n" +
+      "            if (opaque) {\n" +
+      "              material.baseColorFactor = [1, 1, 1, 1];\n" +
+      "              material.opacity = 1;\n" +
+      '              material.alphaMode = "OPAQUE";\n' +
+      "            } else {\n" +
+      "              material.baseColorFactor = [1, 1, 1, 0.99];\n" +
+      "              material.opacity = 0.99;\n" +
+      '              material.alphaMode = "BLEND";\n' +
+      "            }\n" +
+      "            material.alphaTest = 0;\n" +
+      "            material.metallic = 0;\n" +
+      "            material.roughness = 1;\n" +
+      "            material.needsUpdate = true;\n" +
+      "            viewer.requestFrame();\n" +
+      "            resolve();\n" +
+      "          } else {\n" +
+      "            console.error(`❌ Texture creation failed for ${material.name}`);\n" +
+      "            reject(new Error(`Texture creation failed`));\n" +
+      "          }\n" +
+      "        } catch (e) {\n" +
+      "          console.error(`❌ Error applying texture for ${material.name}:`, e);\n" +
+      "          reject(e);\n" +
+      "        }\n" +
+      "      };\n" +
+      "\n" +
+      "      img.onerror = () => {\n" +
+      "        console.error(`❌ Image load failed: ${imageUrl}`);\n" +
+      "        reject(new Error(`Image load failed`));\n" +
+      "      };\n" +
+      "      img.src = imageUrl;\n" +
+      "    });\n" +
+      "  }\n" +
+      "\n" +
+      "  async function loadAllTextures() {\n" +
+      "    console.log(`🚀 Chargement textures PLV (${config.projectId})...`);\n" +
+      "    updateButtonState(true);\n" +
+      "\n" +
+      "    const textureEntries = Object.entries(config.textures);\n" +
+      "    let loadedCount = 0;\n" +
+      "    let errorCount = 0;\n" +
+      "    const totalTextures = textureEntries.length;\n" +
+      "\n" +
+      "    for (let i = 0; i < totalTextures; i += config.batchSize) {\n" +
+      "      const batch = textureEntries.slice(i, i + config.batchSize);\n" +
+      "\n" +
+      "      const promises = batch.map(([materialName, fileName]) => {\n" +
+      "        const material = viewer.findMaterial(materialName);\n" +
+      "        if (material) {\n" +
+      "          const imageUrl = config.getImageUrl(fileName);\n" +
+      "          const isOpaque = config.opaqueList.includes(materialName);\n" +
+      "          return loadSingleTextureAsync(material, imageUrl, isOpaque)\n" +
+      "            .then(() => {\n" +
+      "              loadedCount++;\n" +
+      "              console.log(`✅ ${materialName} → ${fileName}`);\n" +
+      "            })\n" +
+      "            .catch(() => errorCount++);\n" +
+      "        } else {\n" +
+      "          console.warn(`⚠️ Matériau '${materialName}' introuvable`);\n" +
+      "          errorCount++;\n" +
+      "          return Promise.resolve();\n" +
+      "        }\n" +
+      "      });\n" +
+      "\n" +
+      "      await Promise.all(promises);\n" +
+      "    }\n" +
+      "\n" +
+      "    const success = errorCount === 0;\n" +
+      "    console.log(`✅ Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`);\n" +
+      "    updateButtonState(false, success);\n" +
+      "  }\n" +
+      "\n" +
+      "  // Initialisation\n" +
+      "  const materialNames = Object.keys(config.textures);\n" +
+      "  console.log(`🎨 Setting ${materialNames.length} materials as editable...`);\n" +
+      "  console.log(`📡 Source: OVH PHP - Project ${config.projectId}`);\n" +
+      "  materialNames.forEach((materialName) => {\n" +
+      "    viewer.setMaterialEditable(materialName);\n" +
+      "  });\n" +
+      "\n" +
+      "  viewer.onSceneLoadComplete(() => {\n" +
+      "    createReloadButton();\n" +
+      "    loadAllTextures();\n" +
+      "  });\n" +
+      "\n" +
+      "  window.reloadPLVTextures = loadAllTextures;\n" +
+      "\n" +
+      '  console.log("🚀 Module AutoTextures PLV prêt");\n' +
+      '  console.log("💡 Utilisez window.reloadPLVTextures() ou le bouton pour recharger");\n' +
+      "})();"
+    );
+  }
+
+  // === COPY CODE ===
+  function copyPLVCode() {
+    var textarea = document.getElementById("plv-code-output");
+    if (textarea) {
+      textarea.select();
+      document.execCommand("copy");
+      showToast("Code copié dans le presse-papier !", "success");
+    }
+  }
+
+  // === DELETE PLV PROJECT ===
+  async function deletePLVProject(projectId) {
+    if (
+      !confirm(
+        "Voulez-vous vraiment supprimer ce projet PLV ?\nLe dossier et les images seront supprimés."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiCall("/plv/projects.php?id=" + projectId, "DELETE");
+      showToast("Projet PLV supprimé", "success");
+      loadTextures();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  // === HELPER ===
+  function escapeHtml(text) {
+    var div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // === EXPOSE TO CRM ===
+  Object.assign(CRM, {
+    loadTextures: loadTextures,
+    createPLVProject: createPLVProject,
+    goToPLVStep2: goToPLVStep2,
+    updateStep2Summary: updateStep2Summary,
+    backToPLVStep1: backToPLVStep1,
+    savePLVProject: savePLVProject,
+    viewPLVCode: viewPLVCode,
+    copyPLVCode: copyPLVCode,
+    deletePLVProject: deletePLVProject,
+  });
+
+  console.log("✅ CRM Textures/PLV loaded");
 })();

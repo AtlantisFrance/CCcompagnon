@@ -1,7 +1,7 @@
 /**
  * ============================================
  * 🧑 POPUP PORTRAIT - ATLANTIS CITY
- * Objet: plvportrait_obj
+ * Objet: p1_obj
  * Namespace: portrait
  * ============================================
  */
@@ -16,7 +16,7 @@
   // === CONFIGURATION ===
   const CONFIG = {
     // Objet 3D cliquable
-    objectName: "plvportrait_obj",
+    objectName: "p1_obj",
     popupId: "portrait-popup-overlay",
 
     // ⚠️ CONFIGURER ICI LE SPACE ET LA ZONE

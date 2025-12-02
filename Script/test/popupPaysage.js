@@ -1,7 +1,7 @@
 /**
  * ============================================
  * 🌅 POPUP PAYSAGE - ATLANTIS CITY
- * Objet: plvpaysage_obj
+ * Objet: l1_obj
  * Namespace: paysage
  * ============================================
  */
@@ -16,7 +16,7 @@
   // === CONFIGURATION ===
   const CONFIG = {
     // Objet 3D cliquable
-    objectName: "plvpaysage_obj",
+    objectName: "l1_obj",
     popupId: "paysage-popup-overlay",
 
     // ⚠️ CONFIGURER ICI LE SPACE ET LA ZONE

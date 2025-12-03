@@ -1,8 +1,9 @@
 /**
  * ============================================
- * ℹ️ TEMPLATE INFO - ATLANTIS CITY
+ * ℹ️ TEMPLATE INFO - ATLANTIS CITY - CORRIGÉ
  * ============================================
  * Panneau d'information avec titre et contenu
+ * Utilise les classes .param-* du CSS
  */
 
 (function () {
@@ -48,89 +49,73 @@
   // ============================================
 
   function generateParamsHTML(config) {
+    const cfg = { ...defaultConfig, ...config };
+
     return `
-      <div class="te-params-section">
-        <div class="te-params-section-title">📝 Contenu</div>
-        <div class="te-form-group">
-          <label class="te-form-label">Titre</label>
-          <input type="text" class="te-form-input" value="${escapeHtml(
-            config.title || ""
+      <div class="params-section">
+        <div class="params-section-title">📝 Contenu</div>
+        <div class="param-group">
+          <label class="param-label">Titre</label>
+          <input type="text" class="param-input" value="${escapeHtml(
+            cfg.title || ""
           )}"
                  onchange="window.templateEditor.updateConfig('title', this.value)">
         </div>
-        <div class="te-form-group">
-          <label class="te-form-label">Sous-titre</label>
-          <input type="text" class="te-form-input" value="${escapeHtml(
-            config.subtitle || ""
+        <div class="param-group">
+          <label class="param-label">Sous-titre</label>
+          <input type="text" class="param-input" value="${escapeHtml(
+            cfg.subtitle || ""
           )}"
                  onchange="window.templateEditor.updateConfig('subtitle', this.value)">
         </div>
-        <div class="te-form-group">
-          <label class="te-form-label">Contenu</label>
-          <textarea class="te-form-textarea" rows="4"
+        <div class="param-group">
+          <label class="param-label">Contenu</label>
+          <textarea class="param-input" rows="4" style="resize: vertical;"
                     onchange="window.templateEditor.updateConfig('content', this.value)">${escapeHtml(
-                      config.content || ""
+                      cfg.content || ""
                     )}</textarea>
         </div>
-        <div class="te-form-row">
-          <div class="te-form-group">
-            <label class="te-form-label">Icône</label>
-            <input type="text" class="te-form-input" value="${escapeHtml(
-              config.icon || "ℹ️"
-            )}" maxlength="4"
-                   onchange="window.templateEditor.updateConfig('icon', this.value)">
-          </div>
-          <div class="te-toggle-group">
-            <span class="te-toggle-label">Afficher l'icône</span>
-            <label class="te-toggle">
-              <input type="checkbox" ${
-                config.showIcon !== false ? "checked" : ""
-              }
-                     onchange="window.templateEditor.updateConfig('showIcon', this.checked)">
-              <span class="te-toggle-slider"></span>
-            </label>
-          </div>
+        <div class="param-group">
+          <label class="param-label">Icône</label>
+          <input type="text" class="param-input" value="${escapeHtml(
+            cfg.icon || "ℹ️"
+          )}" maxlength="4" style="width: 80px;"
+                 onchange="window.templateEditor.updateConfig('icon', this.value)">
         </div>
+        <label class="param-toggle">
+          <input type="checkbox" ${cfg.showIcon !== false ? "checked" : ""}
+                 onchange="window.templateEditor.updateConfig('showIcon', this.checked)">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Afficher l'icône</span>
+        </label>
       </div>
 
-      <div class="te-params-section">
-        <div class="te-params-section-title">🎨 Apparence</div>
-        <div class="te-form-row">
-          <div class="te-form-group">
-            <label class="te-form-label">Fond - Début</label>
-            <div class="te-color-group">
-              <input type="color" class="te-color-input" value="${
-                config.bgGradientStart || "#1e3a5f"
-              }"
-                     onchange="window.templateEditor.updateConfig('bgGradientStart', this.value)">
-              <input type="text" class="te-color-value" value="${
-                config.bgGradientStart || "#1e3a5f"
-              }" readonly>
-            </div>
-          </div>
-          <div class="te-form-group">
-            <label class="te-form-label">Fond - Fin</label>
-            <div class="te-color-group">
-              <input type="color" class="te-color-input" value="${
-                config.bgGradientEnd || "#0f172a"
-              }"
-                     onchange="window.templateEditor.updateConfig('bgGradientEnd', this.value)">
-              <input type="text" class="te-color-value" value="${
-                config.bgGradientEnd || "#0f172a"
-              }" readonly>
-            </div>
+      <div class="params-section">
+        <div class="params-section-title">🎨 Apparence</div>
+        <div class="param-group">
+          <label class="param-label">Fond (dégradé)</label>
+          <div class="param-gradient-row">
+            <input type="color" class="param-color" value="${
+              cfg.bgGradientStart || "#1e3a5f"
+            }"
+                   onchange="window.templateEditor.updateConfig('bgGradientStart', this.value)">
+            <span class="gradient-arrow">→</span>
+            <input type="color" class="param-color" value="${
+              cfg.bgGradientEnd || "#0f172a"
+            }"
+                   onchange="window.templateEditor.updateConfig('bgGradientEnd', this.value)">
           </div>
         </div>
-        <div class="te-form-group">
-          <label class="te-form-label">Couleur d'accent</label>
-          <div class="te-color-group">
-            <input type="color" class="te-color-input" value="${
-              config.accentColor || "#3b82f6"
+        <div class="param-group">
+          <label class="param-label">Couleur d'accent</label>
+          <div class="param-gradient-row">
+            <input type="color" class="param-color" value="${
+              cfg.accentColor || "#3b82f6"
             }"
                    onchange="window.templateEditor.updateConfig('accentColor', this.value)">
-            <input type="text" class="te-color-value" value="${
-              config.accentColor || "#3b82f6"
-            }" readonly>
+            <span style="color: #64748b; font-size: 12px; margin-left: 8px;">${
+              cfg.accentColor || "#3b82f6"
+            }</span>
           </div>
         </div>
       </div>
@@ -142,19 +127,23 @@
   // ============================================
 
   function generateHTML(config) {
+    const cfg = { ...defaultConfig, ...config };
+
     return `<!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: linear-gradient(135deg, ${
-        config.bgGradientStart || "#1e3a5f"
-      } 0%, ${config.bgGradientEnd || "#0f172a"} 100%);
+        cfg.bgGradientStart || "#1e3a5f"
+      } 0%, ${cfg.bgGradientEnd || "#0f172a"} 100%);
       min-height: 100vh;
-      color: ${config.textColor || "#ffffff"};
+      color: ${cfg.textColor || "#ffffff"};
       padding: 30px;
     }
     .info-popup { max-width: 400px; margin: 0 auto; }
@@ -166,12 +155,13 @@
     }
     .info-icon {
       width: 50px; height: 50px;
-      background: ${config.accentColor || "#3b82f6"};
+      background: ${cfg.accentColor || "#3b82f6"};
       border-radius: 12px;
-      display: ${config.showIcon !== false ? "flex" : "none"};
+      display: ${cfg.showIcon !== false ? "flex" : "none"};
       align-items: center;
       justify-content: center;
       font-size: 24px;
+      flex-shrink: 0;
     }
     .info-title { font-size: 24px; font-weight: 600; }
     .info-subtitle { font-size: 14px; opacity: 0.7; margin-top: 4px; }
@@ -182,24 +172,24 @@
       padding: 20px;
       background: rgba(255,255,255,0.05);
       border-radius: 12px;
-      border-left: 3px solid ${config.accentColor || "#3b82f6"};
+      border-left: 3px solid ${cfg.accentColor || "#3b82f6"};
     }
   </style>
 </head>
 <body>
   <div class="info-popup">
     <div class="info-header">
-      <div class="info-icon">${escapeHtml(config.icon || "ℹ️")}</div>
+      <div class="info-icon">${escapeHtml(cfg.icon || "ℹ️")}</div>
       <div>
-        <h1 class="info-title">${escapeHtml(config.title || "")}</h1>
+        <h1 class="info-title">${escapeHtml(cfg.title || "")}</h1>
         ${
-          config.subtitle
-            ? `<p class="info-subtitle">${escapeHtml(config.subtitle)}</p>`
+          cfg.subtitle
+            ? `<p class="info-subtitle">${escapeHtml(cfg.subtitle)}</p>`
             : ""
         }
       </div>
     </div>
-    <div class="info-content">${escapeHtml(config.content || "")}</div>
+    <div class="info-content">${escapeHtml(cfg.content || "")}</div>
   </div>
 </body>
 </html>`;

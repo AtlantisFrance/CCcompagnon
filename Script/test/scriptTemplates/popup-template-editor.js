@@ -1,7 +1,7 @@
 /**
  * ============================================
- * 🎨 POPUP TEMPLATE EDITOR v4.1 - Atlantis City
- * Éditeur de templates utilisant le registre
+ * 🎨 POPUP TEMPLATE EDITOR v5.0 - Atlantis City
+ * Éditeur de templates avec sliders, toggles et contacts
  * ============================================
  */
 
@@ -22,7 +22,7 @@
 
   const registry = window.atlantisTemplates;
   console.log(
-    `✅ Template Editor: Registre trouvé avec ${registry.count()} templates`
+    `✅ Template Editor v5.0: Registre trouvé avec ${registry.count()} templates`
   );
 
   // ============================================
@@ -51,7 +51,6 @@
     return div.innerHTML;
   }
 
-  // Pour srcdoc: échapper seulement les guillemets doubles
   function escapeSrcdoc(html) {
     if (!html) return "";
     return html.replace(/"/g, "&quot;");
@@ -64,12 +63,15 @@
     };
   }
 
+  function deepClone(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
   // ============================================
   // RENDU PRINCIPAL
   // ============================================
 
   function render() {
-    // Supprimer l'overlay existant
     const existing = document.querySelector(".template-editor-overlay");
     if (existing) existing.remove();
 
@@ -84,23 +86,27 @@
         <!-- Header -->
         <div class="template-editor-header">
           <div class="template-editor-title">
-            <span style="font-size: 24px;">🎨</span>
-            <div>
-              <h2>Éditeur de contenu</h2>
-              <span class="template-editor-subtitle">${escapeHtml(
-                state.objectConfig?.objectName || "Objet"
-              )}</span>
-            </div>
+            <span class="template-editor-title-icon">🎨</span>
+            <span>Éditeur de contenu — ${escapeHtml(
+              state.objectConfig?.objectName || "Objet"
+            )}</span>
           </div>
-          <button class="template-editor-close" onclick="window.templateEditor.close()">✕</button>
+          <div class="template-editor-actions">
+            <button class="te-btn te-btn-cancel" onclick="window.templateEditor.close()">Annuler</button>
+            <button class="te-btn te-btn-save" onclick="window.templateEditor.save()" ${
+              !state.selectedTemplate ? "disabled" : ""
+            }>
+              💾 Enregistrer
+            </button>
+          </div>
         </div>
 
-        <!-- Body -->
+        <!-- Body 3 colonnes -->
         <div class="template-editor-body">
           <!-- Colonne 1: Templates -->
-          <div class="template-editor-col template-list-col">
-            <div class="col-header">📋 Templates</div>
-            <div class="template-list">
+          <div class="template-editor-templates">
+            <div class="templates-title">📋 Templates</div>
+            <div class="templates-list">
               ${Object.values(templates)
                 .map(
                   (t) => `
@@ -108,12 +114,10 @@
                   state.selectedTemplate === t.id ? "selected" : ""
                 }" 
                      onclick="window.templateEditor.selectTemplate('${t.id}')">
-                  <span class="template-icon">${t.icon}</span>
-                  <div class="template-info">
-                    <div class="template-name">${escapeHtml(t.name)}</div>
-                    <div class="template-desc">${escapeHtml(
-                      t.description
-                    )}</div>
+                  <div class="template-item-icon">${t.icon}</div>
+                  <div class="template-item-info">
+                    <h4>${escapeHtml(t.name)}</h4>
+                    <p>${escapeHtml(t.description)}</p>
                   </div>
                 </div>
               `
@@ -122,193 +126,186 @@
             </div>
           </div>
 
-          <!-- Colonne 2: Paramètres -->
-          <div class="template-editor-col params-col">
-            <div class="col-header">⚙️ Paramètres</div>
-            <div class="params-container" id="params-container">
-              ${
-                state.selectedTemplate
-                  ? renderParams()
-                  : `
-                <div class="empty-state">
-                  <span style="font-size: 48px; opacity: 0.3;">👈</span>
-                  <p>Sélectionnez un template</p>
-                </div>
-              `
-              }
+          <!-- Colonne 2: Preview -->
+          <div class="template-editor-preview">
+            <div class="preview-format-tabs">
+              <button class="preview-format-tab ${
+                state.previewFormat === "auto" ? "active" : ""
+              }" 
+                      onclick="window.templateEditor.setPreviewFormat('auto')">Auto</button>
+              <button class="preview-format-tab ${
+                state.previewFormat === "carre" ? "active" : ""
+              }" 
+                      onclick="window.templateEditor.setPreviewFormat('carre')">Carré</button>
+              <button class="preview-format-tab ${
+                state.previewFormat === "paysage" ? "active" : ""
+              }" 
+                      onclick="window.templateEditor.setPreviewFormat('paysage')">Paysage</button>
+              <button class="preview-format-tab ${
+                state.previewFormat === "portrait" ? "active" : ""
+              }" 
+                      onclick="window.templateEditor.setPreviewFormat('portrait')">Portrait</button>
             </div>
-          </div>
-
-          <!-- Colonne 3: Preview -->
-          <div class="template-editor-col preview-col">
-            <div class="col-header">
-              👁️ Aperçu
-              <div class="preview-formats">
-                <button class="format-btn ${
-                  state.previewFormat === "auto" ? "active" : ""
-                }" 
-                        onclick="window.templateEditor.setPreviewFormat('auto')">Auto</button>
-                <button class="format-btn ${
-                  state.previewFormat === "carre" ? "active" : ""
-                }" 
-                        onclick="window.templateEditor.setPreviewFormat('carre')">Carré</button>
-                <button class="format-btn ${
-                  state.previewFormat === "paysage" ? "active" : ""
-                }" 
-                        onclick="window.templateEditor.setPreviewFormat('paysage')">Paysage</button>
-                <button class="format-btn ${
-                  state.previewFormat === "portrait" ? "active" : ""
-                }" 
-                        onclick="window.templateEditor.setPreviewFormat('portrait')">Portrait</button>
-              </div>
-            </div>
-            <div class="preview-container" id="preview-container">
+            <div class="preview-wrapper" id="preview-container">
               ${
                 state.selectedTemplate
                   ? renderPreview()
                   : `
-                <div class="empty-state">
-                  <span style="font-size: 48px; opacity: 0.3;">👀</span>
-                  <p>L'aperçu apparaîtra ici</p>
+                <div class="preview-empty">
+                  <div class="preview-empty-icon">👈</div>
+                  <p>Sélectionnez un template pour commencer</p>
                 </div>
               `
               }
             </div>
           </div>
-        </div>
 
-        <!-- Footer -->
-        <div class="template-editor-footer">
-          <button class="btn-secondary" onclick="window.templateEditor.close()">Annuler</button>
-          <button class="btn-primary" onclick="window.templateEditor.save()" ${
-            !state.selectedTemplate ? "disabled" : ""
-          }>
-            💾 Enregistrer
-          </button>
+          <!-- Colonne 3: Paramètres -->
+          <div class="template-editor-params">
+            <div class="params-title">⚙️ Paramètres</div>
+            <div class="params-scroll" id="params-container">
+              ${
+                state.selectedTemplate
+                  ? renderParams()
+                  : `
+                <div class="params-empty">
+                  <p>Les options apparaîtront ici</p>
+                </div>
+              `
+              }
+            </div>
+          </div>
         </div>
       </div>
     `;
 
     document.body.appendChild(overlay);
-
-    // Animation d'entrée
     requestAnimationFrame(() => overlay.classList.add("active"));
+    document.addEventListener("keydown", handleEscape);
   }
 
-  function renderParams() {
-    if (!state.selectedTemplate) return "";
-
-    const paramsHTML = registry.generateParamsHTML(
-      state.selectedTemplate,
-      state.currentConfig
-    );
-    if (paramsHTML) return paramsHTML;
-
-    // Fallback si le template n'a pas de generateParamsHTML
-    return `
-      <div class="params-section">
-        <div class="params-section-title">⚙️ Configuration</div>
-        <p style="color: #64748b; font-size: 13px;">
-          Ce template n'a pas de paramètres configurables.
-        </p>
-      </div>
-    `;
-  }
+  // ============================================
+  // RENDU PREVIEW
+  // ============================================
 
   function renderPreview() {
     if (!state.selectedTemplate) return "";
 
+    const template = registry.get(state.selectedTemplate);
+    if (!template) return "<p>Template non trouvé</p>";
+
+    const html = template.generateHTML(state.currentConfig);
+
+    // Déterminer la taille selon le format
     const format =
       state.previewFormat === "auto"
         ? state.objectConfig?.format || "carre"
         : state.previewFormat;
-    const dimensions = getPreviewDimensions(format);
 
-    // Générer le HTML via le registre
-    const html = registry.generateHTML(
-      state.selectedTemplate,
-      state.currentConfig
-    );
+    const sizes = {
+      carre: { width: 350, height: 420 },
+      paysage: { width: 500, height: 360 },
+      portrait: { width: 300, height: 500 },
+    };
 
-    console.log(
-      "🖼️ Preview HTML généré:",
-      html ? html.substring(0, 200) + "..." : "VIDE"
-    );
-
-    if (!html) {
-      return `
-        <div class="empty-state">
-          <span style="font-size: 48px; opacity: 0.3;">⚠️</span>
-          <p>Erreur de génération HTML</p>
-        </div>
-      `;
-    }
+    const size = sizes[format] || sizes.carre;
 
     return `
-      <div class="preview-frame" style="width: ${dimensions.width}px; height: ${
-      dimensions.height
-    }px;">
+      <div class="preview-frame preview-${format}">
         <iframe 
-          id="preview-iframe"
           srcdoc="${escapeSrcdoc(html)}"
+          style="width: ${size.width}px; height: ${
+      size.height
+    }px; border: none; border-radius: 12px;"
           sandbox="allow-scripts"
-          style="width: 100%; height: 100%; border: none; border-radius: 8px; background: white;">
-        </iframe>
+        ></iframe>
       </div>
     `;
   }
 
-  function getPreviewDimensions(format) {
-    const dims = {
-      carre: { width: 300, height: 300 },
-      paysage: { width: 400, height: 225 },
-      portrait: { width: 225, height: 400 },
-      auto: { width: 350, height: 350 },
-    };
-    return dims[format] || dims.auto;
+  // ============================================
+  // RENDU PARAMÈTRES
+  // ============================================
+
+  function renderParams() {
+    if (!state.selectedTemplate) return "";
+
+    const template = registry.get(state.selectedTemplate);
+    if (!template || !template.generateParamsHTML) {
+      return '<p style="color: #64748b; padding: 20px;">Ce template n\'a pas de paramètres configurables.</p>';
+    }
+
+    return template.generateParamsHTML(state.currentConfig);
   }
 
   // ============================================
-  // UPDATE PREVIEW (avec debounce)
+  // MISE À JOUR PREVIEW (debounced)
   // ============================================
 
-  const updatePreview = debounce(function () {
-    const container = document.getElementById("preview-container");
-    if (!container || !state.selectedTemplate) return;
-
-    container.innerHTML = renderPreview();
+  const updatePreview = debounce(() => {
+    const previewContainer = document.getElementById("preview-container");
+    if (previewContainer && state.selectedTemplate) {
+      previewContainer.innerHTML = renderPreview();
+    }
   }, 150);
 
   // ============================================
-  // API PUBLIQUE
+  // MISE À JOUR PARAMÈTRES
+  // ============================================
+
+  function updateParamsUI() {
+    const paramsContainer = document.getElementById("params-container");
+    if (paramsContainer && state.selectedTemplate) {
+      paramsContainer.innerHTML = renderParams();
+    }
+  }
+
+  // ============================================
+  // GESTION CLAVIER
+  // ============================================
+
+  function handleEscape(e) {
+    if (e.key === "Escape" && state.isOpen) {
+      close();
+    }
+  }
+
+  // ============================================
+  // ACTIONS PUBLIQUES
   // ============================================
 
   function open(objectConfig, existingData = null) {
-    console.log("🎨 Template Editor: Ouverture", objectConfig);
+    console.log("📝 Template Editor: Opening for", objectConfig);
 
     state.isOpen = true;
     state.objectConfig = objectConfig;
     state.existingData = existingData;
-    state.previewFormat = objectConfig?.format || "auto";
+    state.previewFormat = "auto";
 
-    // Si données existantes, charger le template et la config
+    // Si données existantes, pré-sélectionner le template
     if (existingData && existingData.template_type) {
-      state.selectedTemplate = existingData.template_type;
-      state.currentConfig =
-        existingData.template_config ||
-        registry.getDefaultConfig(existingData.template_type);
+      const templateId = existingData.template_type;
+      const template = registry.get(templateId);
+
+      if (template) {
+        state.selectedTemplate = templateId;
+        // Merger config existante avec défauts
+        state.currentConfig = {
+          ...deepClone(template.defaultConfig),
+          ...(existingData.template_config || {}),
+        };
+      }
     } else {
       state.selectedTemplate = null;
       state.currentConfig = {};
     }
 
     render();
-    document.body.style.overflow = "hidden";
   }
 
   function close() {
     state.isOpen = false;
-    document.body.style.overflow = "";
+    document.removeEventListener("keydown", handleEscape);
 
     const overlay = document.querySelector(".template-editor-overlay");
     if (overlay) {
@@ -320,26 +317,52 @@
   function selectTemplate(templateId) {
     console.log("📋 Template sélectionné:", templateId);
 
+    const template = registry.get(templateId);
+    if (!template) {
+      console.error("Template non trouvé:", templateId);
+      return;
+    }
+
     state.selectedTemplate = templateId;
-    state.currentConfig = registry.getDefaultConfig(templateId);
+    state.currentConfig = deepClone(template.defaultConfig);
 
-    console.log("📋 Config par défaut:", state.currentConfig);
-
-    // Re-render complet pour mettre à jour toutes les colonnes
     render();
   }
 
   function updateConfig(key, value) {
-    console.log("🔧 updateConfig:", key, "=", value);
+    if (!state.selectedTemplate) return;
+
     state.currentConfig[key] = value;
+    console.log(`⚙️ Config update: ${key} =`, value);
+
     updatePreview();
   }
 
+  function setPreviewFormat(format) {
+    state.previewFormat = format;
+
+    // Mettre à jour les boutons
+    document.querySelectorAll(".preview-format-tab").forEach((btn) => {
+      const btnFormat = btn.textContent.toLowerCase();
+      btn.classList.toggle("active", btnFormat === format);
+    });
+
+    updatePreview();
+  }
+
+  // ============================================
+  // GESTION DES CONTACTS (template contact)
+  // ============================================
+
   function updateContact(index, field, value) {
-    if (!state.currentConfig.contacts) return;
-    if (!state.currentConfig.contacts[index]) return;
+    if (!state.currentConfig.contacts || !state.currentConfig.contacts[index]) {
+      console.warn("Contact non trouvé:", index);
+      return;
+    }
 
     state.currentConfig.contacts[index][field] = value;
+    console.log(`📇 Contact ${index} update: ${field} =`, value);
+
     updatePreview();
   }
 
@@ -347,50 +370,56 @@
     if (!state.currentConfig.contacts) {
       state.currentConfig.contacts = [];
     }
-    state.currentConfig.contacts.push({ type: "email", value: "" });
 
-    // Re-render params
-    const paramsContainer = document.getElementById("params-container");
-    if (paramsContainer) {
-      paramsContainer.innerHTML = renderParams();
-    }
+    state.currentConfig.contacts.push({
+      type: "email",
+      label: "Nouveau",
+      value: "",
+      href: "",
+    });
+
+    console.log(
+      "➕ Contact ajouté, total:",
+      state.currentConfig.contacts.length
+    );
+
+    updateParamsUI();
     updatePreview();
   }
 
   function removeContact(index) {
-    if (!state.currentConfig.contacts) return;
-    state.currentConfig.contacts.splice(index, 1);
-
-    // Re-render params
-    const paramsContainer = document.getElementById("params-container");
-    if (paramsContainer) {
-      paramsContainer.innerHTML = renderParams();
-    }
-    updatePreview();
-  }
-
-  function setPreviewFormat(format) {
-    state.previewFormat = format;
-
-    // Re-render pour mettre à jour les boutons et le preview
-    render();
-  }
-
-  async function save() {
-    if (!state.selectedTemplate || !state.objectConfig) {
-      console.error(
-        "❌ Impossible de sauvegarder: template ou config manquant"
-      );
+    if (!state.currentConfig.contacts || !state.currentConfig.contacts[index]) {
       return;
     }
 
-    console.log("💾 Sauvegarde en cours...");
+    state.currentConfig.contacts.splice(index, 1);
+    console.log(
+      "➖ Contact supprimé, restant:",
+      state.currentConfig.contacts.length
+    );
+
+    updateParamsUI();
+    updatePreview();
+  }
+
+  // ============================================
+  // SAUVEGARDE
+  // ============================================
+
+  async function save() {
+    if (!state.selectedTemplate || !state.objectConfig) {
+      console.error("❌ Impossible de sauvegarder: données manquantes");
+      return;
+    }
+
+    const template = registry.get(state.selectedTemplate);
+    if (!template) {
+      console.error("❌ Template non trouvé");
+      return;
+    }
 
     // Générer le HTML final
-    const htmlContent = registry.generateHTML(
-      state.selectedTemplate,
-      state.currentConfig
-    );
+    const htmlContent = template.generateHTML(state.currentConfig);
 
     // Récupérer le token
     const token =
@@ -399,41 +428,45 @@
       sessionStorage.getItem("atlantis_auth_token");
 
     if (!token) {
-      alert("Vous devez être connecté pour sauvegarder.");
+      alert("❌ Vous devez être connecté pour sauvegarder.");
       return;
     }
 
-    // Récupérer le space_slug
-    const spaceSlug =
-      state.objectConfig.spaceSlug || window.ATLANTIS_SPACE || "scenetes";
+    // Préparer les données
+    const saveData = {
+      space_slug:
+        state.objectConfig.spaceSlug || window.ATLANTIS_SPACE || "default",
+      object_name: state.objectConfig.objectName,
+      template_type: state.selectedTemplate,
+      template_config: state.currentConfig,
+      html_content: htmlContent,
+      auth_token: token,
+    };
+
+    console.log("💾 Sauvegarde en cours...", saveData);
+
+    // Bouton loading
+    const saveBtn = document.querySelector(".te-btn-save");
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = "⏳ Sauvegarde...";
+    }
 
     try {
-      const response = await fetch(
-        "https://compagnon.atlantis-city.com/api/popups/save.php",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            space_slug: spaceSlug,
-            object_name: state.objectConfig.objectName,
-            shader_name: state.objectConfig.shaderName || null,
-            format: state.objectConfig.format || null,
-            template_type: state.selectedTemplate,
-            template_config: state.currentConfig,
-            html_content: htmlContent,
-            auth_token: token,
-          }),
-        }
-      );
+      const apiBase =
+        window.ATLANTIS_API_BASE || "https://compagnon.atlantis-city.com/api";
+      const response = await fetch(`${apiBase}/popups/save.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(saveData),
+      });
 
       const result = await response.json();
 
       if (result.success) {
-        console.log("✅ Sauvegarde réussie", result);
+        console.log("✅ Sauvegarde réussie!");
 
-        // Émettre un événement pour notifier les autres composants
+        // Émettre événement pour notifier les autres composants
         document.dispatchEvent(
           new CustomEvent("atlantis-popup-content-saved", {
             detail: {
@@ -445,34 +478,32 @@
           })
         );
 
+        // Fermer l'éditeur
         close();
 
-        // Notification
+        // Notification succès
         if (window.atlantisPopup?.showNotification) {
           window.atlantisPopup.showNotification(
-            "Contenu sauvegardé !",
+            "✅ Contenu sauvegardé !",
             "success"
           );
-        } else {
-          // Notification simple
-          const notif = document.createElement("div");
-          notif.style.cssText =
-            "position:fixed;bottom:30px;right:30px;background:#10b981;color:white;padding:16px 24px;border-radius:10px;font-size:14px;font-weight:600;z-index:100001;box-shadow:0 10px 40px rgba(0,0,0,0.3);";
-          notif.textContent = "✅ Contenu sauvegardé !";
-          document.body.appendChild(notif);
-          setTimeout(() => notif.remove(), 3000);
         }
       } else {
-        throw new Error(result.error || "Erreur de sauvegarde");
+        throw new Error(result.error || "Erreur inconnue");
       }
     } catch (error) {
       console.error("❌ Erreur sauvegarde:", error);
-      alert("Erreur lors de la sauvegarde: " + error.message);
+      alert("❌ Erreur lors de la sauvegarde: " + error.message);
+
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = "💾 Enregistrer";
+      }
     }
   }
 
   // ============================================
-  // EXPOSITION GLOBALE
+  // API PUBLIQUE
   // ============================================
 
   const publicAPI = {
@@ -489,11 +520,10 @@
     isOpen: () => state.isOpen,
   };
 
-  // Exposer sous plusieurs noms pour compatibilité
+  // Exposer globalement sous plusieurs noms
   window.templateEditor = publicAPI;
   window.atlantisTemplateEditor = publicAPI;
   window.popupTemplateEditor = publicAPI;
 
-  console.log("✅ Popup Template Editor v4.1 initialisé");
-  console.log("   Templates disponibles:", registry.list().join(", "));
+  console.log("✅ Popup Template Editor v5.0 initialisé");
 })();

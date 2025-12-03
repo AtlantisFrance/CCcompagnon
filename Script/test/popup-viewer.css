@@ -4,7 +4,7 @@
  * Styles pour le système de popups
  * ============================================
  * 
- * v2.0 - Iframe responsive (90% de la popup), contenu centré
+ * v3.0 - Rendu NATIF (plus d'iframe sauf pour iframe/youtube)
  */
 
 /* ============================================
@@ -70,7 +70,7 @@
   transform: scale(1.1);
 }
 
-/* Canvas pour le contenu - RESPONSIVE 90% */
+/* Canvas pour le contenu - RESPONSIVE */
 .popup-viewer-canvas {
   width: 100%;
   height: 100%;
@@ -80,13 +80,126 @@
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
 }
 
-/* Iframe du contenu - remplit tout le canvas */
+/* Sizing par format en mode viewer */
+.popup-viewer-canvas.format-carre {
+  max-width: 500px;
+  max-height: 500px;
+  aspect-ratio: 1 / 1;
+}
+
+.popup-viewer-canvas.format-paysage {
+  max-width: 800px;
+  max-height: 450px;
+  aspect-ratio: 16 / 9;
+}
+
+.popup-viewer-canvas.format-portrait {
+  max-width: 400px;
+  max-height: 711px;
+  aspect-ratio: 9 / 16;
+}
+
+/* Iframe du contenu (pour templates iframe/youtube) */
 .popup-content-iframe {
   width: 100%;
   height: 100%;
   border: none;
   display: block;
   background: white;
+}
+
+/* ============================================
+   🎨 RENDU NATIF - Contenu HTML direct
+   ============================================ */
+
+/* Conteneur du contenu natif avec isolation */
+.popup-native-content {
+  /* Reset pour isolation */
+  all: initial;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+
+  /* Styles de base */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1f2937;
+  background: white;
+
+  /* Padding interne */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* Styles par défaut pour le contenu natif */
+.popup-native-content * {
+  box-sizing: border-box;
+}
+
+.popup-native-content h1,
+.popup-native-content h2,
+.popup-native-content h3,
+.popup-native-content h4,
+.popup-native-content h5,
+.popup-native-content h6 {
+  margin: 0 0 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #111827;
+}
+
+.popup-native-content h1 {
+  font-size: 1.75em;
+}
+.popup-native-content h2 {
+  font-size: 1.5em;
+}
+.popup-native-content h3 {
+  font-size: 1.25em;
+}
+.popup-native-content h4 {
+  font-size: 1.1em;
+}
+
+.popup-native-content p {
+  margin: 0 0 1em;
+}
+
+.popup-native-content a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.popup-native-content a:hover {
+  text-decoration: underline;
+}
+
+.popup-native-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.popup-native-content ul,
+.popup-native-content ol {
+  margin: 0 0 1em;
+  padding-left: 1.5em;
+}
+
+.popup-native-content li {
+  margin-bottom: 0.25em;
+}
+
+.popup-native-content strong,
+.popup-native-content b {
+  font-weight: 600;
+}
+
+.popup-native-content em,
+.popup-native-content i {
+  font-style: italic;
 }
 
 /* ============================================
@@ -236,7 +349,7 @@
 }
 
 /* ============================================
-   📦 PREVIEW ADMIN - Iframe dans le body
+   📦 PREVIEW ADMIN - Contenu dans le body
    ============================================ */
 
 .popup-admin-preview {
@@ -263,9 +376,16 @@
   border: 1px solid #334155;
 }
 
+/* Iframe dans le preview admin */
 .popup-admin-preview-frame .popup-content-iframe {
   width: 100%;
   height: 100%;
+}
+
+/* Contenu natif dans le preview admin */
+.popup-admin-preview-frame .popup-native-content {
+  height: 100%;
+  overflow: auto;
 }
 
 /* ============================================
@@ -407,6 +527,15 @@
     height: 95%;
   }
 
+  .popup-viewer-canvas.format-carre,
+  .popup-viewer-canvas.format-paysage,
+  .popup-viewer-canvas.format-portrait {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: auto;
+  }
+
   .popup-viewer-container {
     width: 95%;
     max-height: 95vh;
@@ -436,5 +565,10 @@
   .popup-admin-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .popup-native-content {
+    padding: 15px;
+    font-size: 14px;
   }
 }

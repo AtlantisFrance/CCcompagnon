@@ -8,10 +8,7 @@
  * - VIEWER : Popup épurée, juste le contenu HTML du client
  * - ADMIN : Popup complète avec header, badges, toolbar
  *
- * IMPORTANT : Le contenu HTML est rendu dans un IFRAME
- * pour isolation totale (pas de conflit z-index, position, etc.)
- *
- * v2.0 - Iframe responsive (90% de la popup), contenu centré
+ * v3.0 - Rendu NATIF (plus d'iframe sauf pour template iframe/youtube)
  */
 
 (function () {
@@ -42,7 +39,12 @@
         title: "PLV Carré",
         opaque: true,
         zoneSlug: "mascenetest-zone1",
-        content: { hasContent: false, html: "" },
+        content: {
+          hasContent: false,
+          html: "",
+          templateType: null,
+          templateConfig: null,
+        },
       },
 
       l1_obj: {
@@ -56,7 +58,12 @@
         title: "PLV Paysage",
         opaque: true,
         zoneSlug: "mascenetest-zone2",
-        content: { hasContent: false, html: "" },
+        content: {
+          hasContent: false,
+          html: "",
+          templateType: null,
+          templateConfig: null,
+        },
       },
 
       l2_obj: {
@@ -70,7 +77,12 @@
         title: "PLV Paysage 2",
         opaque: false,
         zoneSlug: "mascenetest-zone2",
-        content: { hasContent: false, html: "" },
+        content: {
+          hasContent: false,
+          html: "",
+          templateType: null,
+          templateConfig: null,
+        },
       },
 
       p1_obj: {
@@ -84,7 +96,12 @@
         title: "PLV Portrait",
         opaque: true,
         zoneSlug: "mascenetest-zone2",
-        content: { hasContent: false, html: "" },
+        content: {
+          hasContent: false,
+          html: "",
+          templateType: null,
+          templateConfig: null,
+        },
       },
 
       p2_obj: {
@@ -98,7 +115,12 @@
         title: "PLV Portrait 2",
         opaque: false,
         zoneSlug: null,
-        content: { hasContent: false, html: "" },
+        content: {
+          hasContent: false,
+          html: "",
+          templateType: null,
+          templateConfig: null,
+        },
       },
 
       c2_obj: {
@@ -112,7 +134,12 @@
         title: "PLV Carré 2",
         opaque: false,
         zoneSlug: null,
-        content: { hasContent: false, html: "" },
+        content: {
+          hasContent: false,
+          html: "",
+          templateType: null,
+          templateConfig: null,
+        },
       },
     },
   };
@@ -126,12 +153,19 @@
   let contentsLoaded = false;
 
   // ============================================
-  // 🖼️ RENDU IFRAME ISOLÉ
+  // 🖼️ RENDU NATIF (Direct DOM)
   // ============================================
 
   /**
-   * Génère le HTML complet pour l'iframe
-   * Le contenu est centré verticalement et horizontalement
+   * Détermine si le contenu nécessite un iframe
+   * (templates iframe et youtube seulement)
+   */
+  function needsIframe(templateType) {
+    return templateType === "iframe" || templateType === "youtube";
+  }
+
+  /**
+   * Génère le HTML pour un iframe (utilisé pour templates iframe/youtube)
    */
   function generateIframeContent(html) {
     return `<!DOCTYPE html>
@@ -146,22 +180,16 @@
       height: 100%; 
       overflow: auto;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: white;
+      background: transparent;
     }
-    /* Container centré verticalement et horizontalement */
     body {
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100%;
-      padding: 20px;
     }
-    /* Le contenu garde sa taille naturelle */
-    body > * {
-      max-width: 100%;
-    }
-    img { max-width: 100%; height: auto; }
-    a { color: #3b82f6; }
+    body > * { max-width: 100%; }
+    iframe { border: none; }
   </style>
 </head>
 <body>${html}</body>
@@ -169,7 +197,7 @@
   }
 
   /**
-   * Injecte le contenu dans un iframe de façon sécurisée
+   * Injecte le contenu dans un iframe
    */
   function injectContentIntoIframe(iframeId, html) {
     const iframe = document.getElementById(iframeId);
@@ -180,6 +208,43 @@
       iframeDoc.open();
       iframeDoc.write(generateIframeContent(html));
       iframeDoc.close();
+    }
+  }
+
+  /**
+   * Rendu du contenu - Natif ou Iframe selon le template
+   */
+  function renderContent(
+    objectConfig,
+    containerId = "popup-content-container"
+  ) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const { html, templateType } = objectConfig.content || {};
+
+    if (!html) {
+      container.innerHTML = "";
+      return;
+    }
+
+    if (needsIframe(templateType)) {
+      // Templates iframe/youtube → utiliser iframe
+      container.innerHTML = `
+        <iframe 
+          id="popup-content-iframe" 
+          class="popup-content-iframe"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+          frameborder="0"
+        ></iframe>
+      `;
+      setTimeout(
+        () => injectContentIntoIframe("popup-content-iframe", html),
+        50
+      );
+    } else {
+      // Tous les autres templates → rendu natif direct
+      container.innerHTML = `<div class="popup-native-content">${html}</div>`;
     }
   }
 
@@ -206,6 +271,8 @@
             CONFIG.objects[objectName].content = {
               hasContent: !!popup.html_content,
               html: popup.html_content || "",
+              templateType: popup.template_type || null,
+              templateConfig: popup.template_config || null,
             };
             loadedCount++;
           }
@@ -230,11 +297,14 @@
       );
       const result = await response.json();
 
-      if (result.success && result.data) {
+      if (result.success && result.data?.popup) {
         if (CONFIG.objects[objectName]) {
+          const popup = result.data.popup;
           CONFIG.objects[objectName].content = {
-            hasContent: !!result.data.html_content,
-            html: result.data.html_content || "",
+            hasContent: !!popup.html_content,
+            html: popup.html_content || "",
+            templateType: popup.template_type || null,
+            templateConfig: popup.template_config || null,
           };
           console.log(`👁️ Popup: Contenu rechargé pour ${objectName}`);
 
@@ -255,13 +325,7 @@
     if (!objectConfig) return;
 
     if (currentView === "main") {
-      const iframe = document.getElementById("popup-content-iframe");
-      if (iframe && objectConfig.content?.html) {
-        injectContentIntoIframe(
-          "popup-content-iframe",
-          objectConfig.content.html
-        );
-      }
+      renderContent(objectConfig, "popup-content-container");
     }
 
     console.log(`👁️ Popup: Affichage rafraîchi pour ${currentObjectName}`);
@@ -326,7 +390,7 @@
   // ============================================
 
   /**
-   * Popup VIEWER : Contenu seul dans IFRAME responsive (90%), sans chrome
+   * Popup VIEWER : Contenu seul, RENDU NATIF (sauf iframe/youtube)
    */
   function createViewerPopupHTML(objectConfig) {
     const hasContent = objectConfig.content?.hasContent;
@@ -335,39 +399,63 @@
       return `<div class="popup-viewer-overlay-clean"></div>`;
     }
 
-    // L'iframe prend 90% de la popup, le contenu sera centré à l'intérieur
+    const templateType = objectConfig.content?.templateType;
+    const useIframe = needsIframe(templateType);
+
+    // Format class pour le sizing
+    const formatClass = `format-${objectConfig.format}`;
+
     return `
       <div class="popup-viewer-overlay-clean">
         <button class="popup-viewer-close-floating" onclick="window.atlantisPopup.close()">✕</button>
-        <div class="popup-viewer-canvas">
-          <iframe 
-            id="popup-content-iframe" 
-            class="popup-content-iframe"
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-            frameborder="0"
-          ></iframe>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
-   * Vue principale Admin avec IFRAME responsive pour le contenu
-   */
-  function renderAdminMainView(objectConfig) {
-    const hasContent = objectConfig.content?.hasContent;
-
-    if (hasContent) {
-      return `
-        <div class="popup-admin-preview">
-          <div class="popup-admin-preview-label">Aperçu du contenu client</div>
-          <div class="popup-admin-preview-frame">
+        <div class="popup-viewer-canvas ${formatClass}" id="popup-content-container">
+          ${
+            useIframe
+              ? `
             <iframe 
               id="popup-content-iframe" 
               class="popup-content-iframe"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
               frameborder="0"
             ></iframe>
+          `
+              : `
+            <div class="popup-native-content">${objectConfig.content.html}</div>
+          `
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Vue principale Admin - RENDU NATIF dans le preview
+   */
+  function renderAdminMainView(objectConfig) {
+    const hasContent = objectConfig.content?.hasContent;
+
+    if (hasContent) {
+      const templateType = objectConfig.content?.templateType;
+      const useIframe = needsIframe(templateType);
+
+      return `
+        <div class="popup-admin-preview">
+          <div class="popup-admin-preview-label">Aperçu du contenu client</div>
+          <div class="popup-admin-preview-frame" id="popup-content-container">
+            ${
+              useIframe
+                ? `
+              <iframe 
+                id="popup-content-iframe" 
+                class="popup-content-iframe"
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                frameborder="0"
+              ></iframe>
+            `
+                : `
+              <div class="popup-native-content">${objectConfig.content.html}</div>
+            `
+            }
           </div>
         </div>
       `;
@@ -466,15 +554,16 @@
     if (viewName === "main") {
       container.innerHTML = renderAdminMainView(objectConfig);
 
-      // Injecter le contenu dans l'iframe après création du DOM
-      setTimeout(() => {
-        if (objectConfig.content?.html) {
+      // Injecter le contenu iframe si nécessaire
+      const templateType = objectConfig.content?.templateType;
+      if (needsIframe(templateType) && objectConfig.content?.html) {
+        setTimeout(() => {
           injectContentIntoIframe(
             "popup-content-iframe",
             objectConfig.content.html
           );
-        }
-      }, 50);
+        }, 50);
+      }
 
       if (titleText) titleText.textContent = objectConfig.title;
       footer.innerHTML = `<button class="popup-viewer-btn popup-viewer-btn-close" onclick="window.atlantisPopup.close()">Fermer</button>`;
@@ -570,15 +659,16 @@
     currentPopup = overlay;
     currentObjectName = objectName;
 
-    // Injecter le contenu HTML dans l'iframe APRÈS que le DOM soit prêt
-    setTimeout(() => {
-      if (objectConfig.content?.html) {
+    // Injecter le contenu iframe si nécessaire (pour templates iframe/youtube)
+    const templateType = objectConfig.content?.templateType;
+    if (needsIframe(templateType) && objectConfig.content?.html) {
+      setTimeout(() => {
         injectContentIntoIframe(
           "popup-content-iframe",
           objectConfig.content.html
         );
-      }
-    }, 100);
+      }, 100);
+    }
 
     console.log(
       `👁️ Popup: Ouverte pour ${objectName} (mode: ${
@@ -655,7 +745,7 @@
   viewer.onSceneLoadComplete(async () => {
     await loadContentsFromAPI();
     registerClickHandlers();
-    console.log("👁️ Popup Viewer: ✅ Prêt (iframe responsive 90%, centré)");
+    console.log("👁️ Popup Viewer: ✅ Prêt (rendu natif v3.0)");
   });
 
   // ============================================
@@ -684,6 +774,7 @@
     refreshMainImage,
     reloadContent,
     refreshCurrentPopup,
+    needsIframe,
   };
 
   window.popupViewer = {

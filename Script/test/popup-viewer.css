@@ -3,6 +3,9 @@
  * 👁️ POPUP VIEWER - STYLES
  * Deux modes : Viewer (épuré) / Admin (complet)
  * ============================================
+ * 
+ * L'iframe s'auto-redimensionne selon le contenu.
+ * Tailles gérées dynamiquement par JavaScript.
  */
 
 /* === VARIABLES === */
@@ -23,13 +26,13 @@
   --popup-danger: #ef4444;
 }
 
-/* === OVERLAY === */
+/* === OVERLAY (z-index très élevé) === */
 .popup-viewer-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(8px);
-  z-index: 10000;
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -44,11 +47,14 @@
 
 /* === CONTAINER BASE === */
 .popup-viewer-container {
+  position: relative;
+  z-index: 100001;
   background: var(--popup-bg);
   border: 1px solid var(--popup-border);
   border-radius: var(--popup-radius);
   box-shadow: var(--popup-shadow);
   width: 100%;
+  max-width: 800px;
   max-height: 90vh;
   overflow: hidden;
   display: flex;
@@ -61,54 +67,73 @@
   transform: scale(1) translateY(0);
 }
 
-/* Largeurs par format */
-.popup-viewer-container[data-format="carre"] {
-  max-width: 550px;
-}
-
-.popup-viewer-container[data-format="paysage"] {
-  max-width: 750px;
-}
-
-.popup-viewer-container[data-format="portrait"] {
-  max-width: 450px;
-}
-
 /* ============================================
-   👁️ MODE VIEWER - Épuré, juste le contenu
+   👁️ MODE VIEWER - Épuré, contenu auto-size
    ============================================ */
 
-.popup-viewer-mode-viewer {
-  /* Fond neutre, le contenu gère son propre style */
-  background: transparent;
+.popup-viewer-overlay-clean {
+  position: relative;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Bouton fermer flottant pour mode viewer */
+.popup-viewer-close-floating {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 100003;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.popup-viewer-close-floating:hover {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: rgba(239, 68, 68, 0.5);
+  transform: rotate(90deg) scale(1.1);
+}
+
+/* Canvas viewer - contient l'iframe, taille dynamique */
+.popup-viewer-canvas {
+  position: relative;
+  z-index: 100002;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+
+  /* Taille initiale, sera modifiée par JS */
+  width: 400px;
+  height: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+
+  /* Transition douce pour le resize */
+  transition: width 0.3s ease, height 0.3s ease;
+}
+
+/* === IFRAME STYLES === */
+.popup-content-iframe {
+  width: 100%;
+  height: 100%;
   border: none;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-.popup-viewer-mode-viewer .popup-viewer-canvas {
-  /* Canvas neutre pour le contenu du client */
-  overflow-y: auto;
-  max-height: 90vh;
-}
-
-/* Scrollbar pour le canvas viewer */
-.popup-viewer-mode-viewer .popup-viewer-canvas::-webkit-scrollbar {
-  width: 6px;
-}
-
-.popup-viewer-mode-viewer .popup-viewer-canvas::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.popup-viewer-mode-viewer .popup-viewer-canvas::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.popup-viewer-mode-viewer .popup-viewer-canvas::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  display: block;
+  background: white;
 }
 
 /* ============================================
@@ -124,12 +149,15 @@
 
 /* === HEADER (Admin uniquement) === */
 .popup-viewer-header {
+  position: relative;
+  z-index: 100002;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--popup-border);
   flex-shrink: 0;
+  background: #0f172a;
 }
 
 .popup-viewer-title {
@@ -201,6 +229,8 @@
 
 /* === BODY (Admin) === */
 .popup-viewer-body {
+  position: relative;
+  z-index: 100001;
   flex: 1;
   overflow-y: auto;
   padding: 20px;
@@ -219,7 +249,7 @@
   border-radius: 3px;
 }
 
-/* === ADMIN PREVIEW (aperçu du contenu viewer) === */
+/* === ADMIN PREVIEW (aperçu du contenu, taille dynamique) === */
 .popup-admin-preview {
   background: rgba(0, 0, 0, 0.2);
   border: 1px dashed rgba(99, 179, 237, 0.3);
@@ -236,21 +266,21 @@
   margin-bottom: 12px;
 }
 
+/* Preview frame - taille dynamique avec limites */
 .popup-admin-preview-frame {
-  background: rgba(0, 0, 0, 0.3);
+  background: white;
   border-radius: 8px;
   overflow: hidden;
+  margin: 0 auto;
+
+  /* Taille initiale, sera modifiée par JS */
+  width: 400px;
+  height: 300px;
+  max-width: 100%;
   max-height: 400px;
-  overflow-y: auto;
-}
 
-.popup-admin-preview-frame::-webkit-scrollbar {
-  width: 4px;
-}
-
-.popup-admin-preview-frame::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
+  /* Transition douce */
+  transition: width 0.3s ease, height 0.3s ease;
 }
 
 /* === ADMIN EMPTY STATE === */
@@ -279,13 +309,7 @@
   line-height: 1.6;
 }
 
-.popup-admin-empty .hint {
-  font-size: 13px;
-  color: var(--popup-text-muted);
-  margin-bottom: 24px;
-}
-
-.popup-admin-empty-info {
+.popup-admin-info-grid {
   display: flex;
   justify-content: center;
   gap: 24px;
@@ -295,11 +319,11 @@
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.popup-admin-empty-info .info-item {
+.popup-admin-info-grid .info-item {
   text-align: center;
 }
 
-.popup-admin-empty-info .label {
+.popup-admin-info-grid .label {
   display: block;
   font-size: 11px;
   font-weight: 600;
@@ -309,7 +333,7 @@
   margin-bottom: 4px;
 }
 
-.popup-admin-empty-info .value {
+.popup-admin-info-grid .value {
   display: block;
   font-size: 14px;
   font-weight: 600;
@@ -318,8 +342,11 @@
 
 /* === ADMIN ZONE (toolbar injection) === */
 .popup-viewer-admin-zone {
+  position: relative;
+  z-index: 100002;
   border-top: 1px solid var(--popup-border);
   flex-shrink: 0;
+  background: #0f172a;
 }
 
 .popup-viewer-admin-zone:empty {
@@ -328,12 +355,15 @@
 
 /* === FOOTER (Admin) === */
 .popup-viewer-footer {
+  position: relative;
+  z-index: 100002;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid var(--popup-border);
   flex-shrink: 0;
+  background: #0f172a;
 }
 
 /* === BUTTONS === */
@@ -400,16 +430,22 @@
     padding: 10px;
   }
 
-  /* Mode viewer sur mobile */
-  .popup-viewer-mode-viewer {
-    max-width: 100% !important;
+  /* Mode viewer mobile */
+  .popup-viewer-canvas {
+    max-width: 95vw;
+    max-height: 85vh;
+    border-radius: 8px;
   }
 
-  .popup-viewer-mode-viewer .popup-viewer-canvas {
-    max-height: 95vh;
+  .popup-viewer-close-floating {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
   }
 
-  /* Mode admin sur mobile */
+  /* Mode admin mobile */
   .popup-viewer-mode-admin {
     max-width: 100% !important;
     max-height: 95vh;
@@ -445,7 +481,33 @@
     padding: 14px 20px;
   }
 
-  .popup-admin-empty-info {
+  /* Preview admin mobile */
+  .popup-admin-preview-frame {
+    max-width: 100%;
+    max-height: 300px;
+  }
+
+  .popup-admin-info-grid {
     gap: 16px;
   }
+}
+
+/* ============================================
+   🎨 ANIMATIONS
+   ============================================ */
+
+@keyframes popupFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.popup-viewer-canvas,
+.popup-viewer-container {
+  animation: popupFadeIn 0.3s ease-out;
 }

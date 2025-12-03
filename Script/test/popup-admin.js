@@ -43,6 +43,56 @@
     return null;
   }
 
+  function getSpaceId() {
+    // Récupérer depuis atlantisAuth ou popup config
+    const user = window.atlantisAuth?.getUser();
+    if (user?.space_roles?.length > 0) {
+      const spaceSlug = window.atlantisPopup?.getSpaceSlug();
+      const role = user.space_roles.find((r) => r.space_slug === spaceSlug);
+      if (role) return role.space_id;
+    }
+    return null;
+  }
+
+  function getZoneId(zoneSlug) {
+    const user = window.atlantisAuth?.getUser();
+    if (user?.space_roles?.length > 0) {
+      const role = user.space_roles.find((r) => r.zone_slug === zoneSlug);
+      if (role) return role.zone_id;
+    }
+    return null;
+  }
+
+  // ============================================
+  // 📝 OUVRIR L'ÉDITEUR DE CONTENU
+  // ============================================
+
+  function openContentEditor(objectConfig) {
+    if (!window.popupEditor) {
+      console.error("🔧 Admin: Module popup-editor.js non chargé !");
+      alert(
+        "Module d'édition non disponible. Vérifiez que popup-editor.js est chargé."
+      );
+      return;
+    }
+
+    const spaceSlug = window.atlantisPopup?.getSpaceSlug();
+    const spaceId = getSpaceId();
+    const zoneId = getZoneId(objectConfig.zoneSlug);
+
+    window.popupEditor.open({
+      objectName: objectConfig.id,
+      shaderName: objectConfig.shader,
+      spaceId: spaceId,
+      spaceSlug: spaceSlug,
+      zoneId: zoneId,
+      zoneSlug: objectConfig.zoneSlug,
+      format: objectConfig.format,
+    });
+
+    console.log("🔧 Admin: Ouverture éditeur pour", objectConfig.id);
+  }
+
   // ============================================
   // 🎨 INJECTION TOOLBAR
   // ============================================
@@ -58,7 +108,9 @@
     }
 
     const role = getUserRole();
-    const hasContent = objectConfig.content?.hasContent;
+
+    // Stocker objectConfig pour l'utiliser dans onclick
+    window.__currentAdminObjectConfig = objectConfig;
 
     adminZone.innerHTML = `
       <div class="popup-admin-toolbar">
@@ -70,7 +122,7 @@
           <button class="popup-admin-btn popup-admin-btn-upload" onclick="window.atlantisPopup.navigateTo('upload')">
             📤 Modifier l'image
           </button>
-          <button class="popup-admin-btn popup-admin-btn-content" disabled title="Éditeur Quill.js - Bientôt disponible">
+          <button class="popup-admin-btn popup-admin-btn-content" onclick="window.atlantisPopupAdmin.editContent()">
             📝 Modifier le contenu
           </button>
         </div>
@@ -85,6 +137,7 @@
     if (adminZone) {
       adminZone.innerHTML = "";
     }
+    window.__currentAdminObjectConfig = null;
   }
 
   // ============================================
@@ -121,6 +174,14 @@
     injectToolbar,
     removeToolbar,
     getUserRole,
+    editContent: function () {
+      const objectConfig = window.__currentAdminObjectConfig;
+      if (objectConfig) {
+        openContentEditor(objectConfig);
+      } else {
+        console.error("🔧 Admin: Pas de config objet disponible");
+      }
+    },
   };
 
   console.log("🔧 Popup Admin: ✅ Prêt");

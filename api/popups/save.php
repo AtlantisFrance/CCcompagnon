@@ -1,203 +1,212 @@
 <?php
 /**
  * ============================================
- * 💾 API - SAUVEGARDE POPUP
+ * 💾 API - SAUVEGARDE POPUP (v2 - Simplifié)
  * ============================================
- * 
- * POST /api/popups/save.php
- * 
- * Body JSON:
- * {
- *   "space_slug": "mon-espace",
- *   "object_name": "c1_obj",
- *   "template_type": "contact",
- *   "template_config": {...},
- *   "html_content": "<div>...</div>",
- *   "auth_token": "xxx"  // Token auth (workaround OVH)
- * }
  */
 
-require_once __DIR__ . '/../config/init.php';
+// Activer les erreurs pour debug
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+// Headers CORS
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+
+// OPTIONS preflight
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 // Uniquement POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    errorResponse('Méthode non autorisée', 405);
+    http_response_code(405);
+    echo json_encode(['success' => false, 'error' => 'Méthode non autorisée']);
+    exit;
 }
 
-// Récupérer les données
-$data = getPostData();
+// Charger config
+define('ATLANTIS_API', true);
+
+try {
+    require_once __DIR__ . '/../config/database.php';
+    require_once __DIR__ . '/../config/init.php';
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Erreur config: ' . $e->getMessage()]);
+    exit;
+}
+
+// Récupérer les données POST
+$rawInput = file_get_contents('php://input');
+$data = json_decode($rawInput, true);
+
+if (!$data) {
+    errorResponse('Données JSON invalides', 400);
+}
 
 // Champs requis
-$spaceSlug = getRequired($data, 'space_slug');
-$objectName = getRequired($data, 'object_name');
-$htmlContent = getOptional($data, 'html_content', '');
-$templateType = getOptional($data, 'template_type');
-$templateConfig = getOptional($data, 'template_config');
+if (empty($data['space_slug'])) {
+    errorResponse('space_slug requis', 400);
+}
+if (empty($data['object_name'])) {
+    errorResponse('object_name requis', 400);
+}
+
+$spaceSlug = trim($data['space_slug']);
+$objectName = trim($data['object_name']);
+$htmlContent = $data['html_content'] ?? '';
+$templateType = $data['template_type'] ?? null;
+$templateConfig = $data['template_config'] ?? null;
 
 // ============================================
-// 🔐 AUTHENTIFICATION (workaround OVH)
+// 🔐 AUTH (simplifié pour OVH)
 // ============================================
 
-// Essayer de récupérer le token depuis plusieurs sources
 $token = null;
 
-// 1. Token dans le body POST (prioritaire pour OVH)
+// 1. Token dans body
 if (!empty($data['auth_token'])) {
     $token = $data['auth_token'];
 }
 
-// 2. Header Authorization (si pas bloqué)
-if (!$token) {
-    $token = getAuthToken();
-}
-
-// 3. Cookie
-if (!$token && isset($_COOKIE['atlantis_token'])) {
+// 2. Cookie
+if (!$token && !empty($_COOKIE['atlantis_token'])) {
     $token = $_COOKIE['atlantis_token'];
 }
 
+// 3. Header (probablement bloqué par OVH)
 if (!$token) {
-    errorResponse('Token d\'authentification requis', 401);
+    $headers = getallheaders();
+    $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    if (preg_match('/Bearer\s+(.+)$/i', $authHeader, $matches)) {
+        $token = $matches[1];
+    }
 }
 
-// Valider le token
+if (!$token) {
+    errorResponse('Token requis', 401);
+}
+
+// Valider token
 $user = validateToken($token);
-
 if (!$user) {
-    errorResponse('Session invalide ou expirée', 401);
+    errorResponse('Session invalide', 401);
 }
+
+// ============================================
+// 💾 SAUVEGARDE
+// ============================================
 
 try {
     $db = getDB();
     
-    // ============================================
-    // 📍 RÉCUPÉRER L'ESPACE
-    // ============================================
-    
-    $stmt = $db->prepare("SELECT id, name FROM spaces WHERE slug = :slug AND is_active = 1");
+    // Récupérer l'espace
+    $stmt = $db->prepare("SELECT id FROM spaces WHERE slug = :slug AND is_active = 1");
     $stmt->execute([':slug' => $spaceSlug]);
     $space = $stmt->fetch();
     
     if (!$space) {
-        errorResponse('Espace non trouvé ou inactif', 404);
+        errorResponse('Espace non trouvé: ' . $spaceSlug, 404);
     }
     
-    $spaceId = $space['id'];
+    $spaceId = (int)$space['id'];
     
-    // ============================================
-    // 🔐 VÉRIFICATION DES PERMISSIONS
-    // ============================================
+    // Vérifier permissions (super_admin ou rôle dans l'espace)
+    $hasPermission = ($user['global_role'] === 'super_admin');
     
-    $hasPermission = false;
-    
-    // Super admin = accès total
-    if ($user['global_role'] === 'super_admin') {
-        $hasPermission = true;
-    }
-    
-    // Sinon vérifier les rôles dans l'espace
     if (!$hasPermission) {
-        $stmt = $db->prepare("
-            SELECT role, zone_id 
-            FROM user_space_roles 
-            WHERE user_id = :user_id AND space_id = :space_id
-        ");
-        $stmt->execute([':user_id' => $user['id'], ':space_id' => $spaceId]);
-        $roles = $stmt->fetchAll();
-        
-        foreach ($roles as $role) {
-            // Space admin = accès à tout l'espace
-            if ($role['role'] === 'space_admin' && $role['zone_id'] === null) {
-                $hasPermission = true;
-                break;
-            }
-            
-            // Zone admin = accès à sa zone (on vérifie si l'objet appartient à cette zone)
-            if ($role['role'] === 'zone_admin' && $role['zone_id'] !== null) {
-                // Pour l'instant on autorise les zone_admin à modifier dans leur espace
-                // Une vérification plus fine nécessiterait de connaître la zone de l'objet
-                $hasPermission = true;
-                break;
-            }
-        }
+        $stmt = $db->prepare("SELECT role FROM user_space_roles WHERE user_id = :uid AND space_id = :sid");
+        $stmt->execute([':uid' => $user['id'], ':sid' => $spaceId]);
+        $role = $stmt->fetch();
+        $hasPermission = ($role && in_array($role['role'], ['space_admin', 'zone_admin']));
     }
     
     if (!$hasPermission) {
-        errorResponse('Permission insuffisante pour modifier ce contenu', 403);
+        errorResponse('Permission insuffisante', 403);
     }
     
-    // ============================================
-    // 💾 SAUVEGARDE
-    // ============================================
+    // Préparer template_config JSON
+    $configJson = null;
+    if ($templateConfig !== null) {
+        $configJson = is_string($templateConfig) ? $templateConfig : json_encode($templateConfig);
+    }
     
-    // Vérifier si le popup existe déjà
-    $stmt = $db->prepare("
-        SELECT id FROM popup_contents 
-        WHERE space_id = :space_id AND object_name = :object_name
-    ");
-    $stmt->execute([':space_id' => $spaceId, ':object_name' => $objectName]);
+    // Vérifier si popup existe
+    $stmt = $db->prepare("SELECT id FROM popup_contents WHERE space_id = :sid AND object_name = :obj");
+    $stmt->execute([':sid' => $spaceId, ':obj' => $objectName]);
     $existing = $stmt->fetch();
-    
-    // Préparer le JSON de la config
-    $templateConfigJson = null;
-    if ($templateConfig) {
-        $templateConfigJson = is_string($templateConfig) ? $templateConfig : json_encode($templateConfig);
-    }
     
     if ($existing) {
         // UPDATE
         $stmt = $db->prepare("
-            UPDATE popup_contents 
-            SET html_content = :html_content,
-                template_type = :template_type,
-                template_config = :template_config,
-                updated_by = :updated_by,
+            UPDATE popup_contents SET
+                html_content = :html,
+                template_type = :ttype,
+                template_config = :tconfig,
+                updated_by = :uid,
                 updated_at = NOW()
             WHERE id = :id
         ");
         $stmt->execute([
-            ':html_content' => $htmlContent,
-            ':template_type' => $templateType,
-            ':template_config' => $templateConfigJson,
-            ':updated_by' => $user['id'],
+            ':html' => $htmlContent,
+            ':ttype' => $templateType,
+            ':tconfig' => $configJson,
+            ':uid' => $user['id'],
             ':id' => $existing['id']
         ]);
         
-        $popupId = $existing['id'];
+        $popupId = (int)$existing['id'];
         $action = 'updated';
+        
     } else {
         // INSERT
         $stmt = $db->prepare("
-            INSERT INTO popup_contents (space_id, object_name, html_content, template_type, template_config, updated_by, created_at, updated_at)
-            VALUES (:space_id, :object_name, :html_content, :template_type, :template_config, :updated_by, NOW(), NOW())
+            INSERT INTO popup_contents 
+                (space_id, object_name, html_content, template_type, template_config, is_active, updated_by, created_at, updated_at)
+            VALUES 
+                (:sid, :obj, :html, :ttype, :tconfig, 1, :uid, NOW(), NOW())
         ");
         $stmt->execute([
-            ':space_id' => $spaceId,
-            ':object_name' => $objectName,
-            ':html_content' => $htmlContent,
-            ':template_type' => $templateType,
-            ':template_config' => $templateConfigJson,
-            ':updated_by' => $user['id']
+            ':sid' => $spaceId,
+            ':obj' => $objectName,
+            ':html' => $htmlContent,
+            ':ttype' => $templateType,
+            ':tconfig' => $configJson,
+            ':uid' => $user['id']
         ]);
         
-        $popupId = $db->lastInsertId();
+        $popupId = (int)$db->lastInsertId();
         $action = 'created';
     }
     
-    // Logger l'activité
+    // Log activité
     logActivity($user['id'], 'popup_' . $action, 'popup_contents', $popupId, [
         'space_slug' => $spaceSlug,
         'object_name' => $objectName,
         'template_type' => $templateType
     ]);
     
-    successResponse([
-        'popup_id' => (int)$popupId,
-        'action' => $action,
-        'object_name' => $objectName
-    ], 'Popup sauvegardé');
+    // Succès
+    echo json_encode([
+        'success' => true,
+        'message' => 'Popup sauvegardé',
+        'data' => [
+            'popup_id' => $popupId,
+            'action' => $action,
+            'object_name' => $objectName
+        ]
+    ]);
     
 } catch (PDOException $e) {
-    error_log("Erreur popups/save: " . $e->getMessage());
-    errorResponse('Erreur serveur: ' . $e->getMessage(), 500);
+    error_log("Save popup PDO error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Erreur BDD: ' . $e->getMessage()
+    ]);
 }

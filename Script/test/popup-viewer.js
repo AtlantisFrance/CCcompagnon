@@ -10,6 +10,8 @@
  *
  * IMPORTANT : Le contenu HTML est rendu dans un IFRAME
  * pour isolation totale (pas de conflit z-index, position, etc.)
+ *
+ * v2.0 - Iframe responsive (90% de la popup), contenu centré
  */
 
 (function () {
@@ -129,7 +131,7 @@
 
   /**
    * Génère le HTML complet pour l'iframe
-   * Le contenu est complètement isolé du DOM parent
+   * Le contenu est centré verticalement et horizontalement
    */
   function generateIframeContent(html) {
     return `<!DOCTYPE html>
@@ -145,6 +147,18 @@
       overflow: auto;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: white;
+    }
+    /* Container centré verticalement et horizontalement */
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100%;
+      padding: 20px;
+    }
+    /* Le contenu garde sa taille naturelle */
+    body > * {
+      max-width: 100%;
     }
     img { max-width: 100%; height: auto; }
     a { color: #3b82f6; }
@@ -311,7 +325,9 @@
   // 🎨 GÉNÉRATION HTML
   // ============================================
 
-  // Popup VIEWER : Contenu seul dans IFRAME, sans chrome
+  /**
+   * Popup VIEWER : Contenu seul dans IFRAME responsive (90%), sans chrome
+   */
   function createViewerPopupHTML(objectConfig) {
     const hasContent = objectConfig.content?.hasContent;
 
@@ -319,11 +335,11 @@
       return `<div class="popup-viewer-overlay-clean"></div>`;
     }
 
-    // Le contenu sera injecté dans l'iframe après création
+    // L'iframe prend 90% de la popup, le contenu sera centré à l'intérieur
     return `
       <div class="popup-viewer-overlay-clean">
         <button class="popup-viewer-close-floating" onclick="window.atlantisPopup.close()">✕</button>
-        <div class="popup-viewer-canvas popup-viewer-format-${objectConfig.format}">
+        <div class="popup-viewer-canvas">
           <iframe 
             id="popup-content-iframe" 
             class="popup-content-iframe"
@@ -335,7 +351,9 @@
     `;
   }
 
-  // Vue principale Admin avec IFRAME pour le contenu
+  /**
+   * Vue principale Admin avec IFRAME responsive pour le contenu
+   */
   function renderAdminMainView(objectConfig) {
     const hasContent = objectConfig.content?.hasContent;
 
@@ -343,7 +361,7 @@
       return `
         <div class="popup-admin-preview">
           <div class="popup-admin-preview-label">Aperçu du contenu client</div>
-          <div class="popup-admin-preview-frame popup-admin-preview-${objectConfig.format}">
+          <div class="popup-admin-preview-frame">
             <iframe 
               id="popup-content-iframe" 
               class="popup-content-iframe"
@@ -637,7 +655,7 @@
   viewer.onSceneLoadComplete(async () => {
     await loadContentsFromAPI();
     registerClickHandlers();
-    console.log("👁️ Popup Viewer: ✅ Prêt (mode iframe isolé)");
+    console.log("👁️ Popup Viewer: ✅ Prêt (iframe responsive 90%, centré)");
   });
 
   // ============================================

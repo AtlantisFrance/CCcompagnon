@@ -4,6 +4,9 @@
  * Éditeur de contenu HTML pour popups
  * ============================================
  *
+ * v2.0 - Preview scalé (zoom arrière comme Photoshop)
+ * Le preview montre tout le contenu à une échelle réduite
+ *
  * Dépendances : popup-admin.js (appelle openEditor)
  * API requises : /api/popups/get.php, /api/popups/save.php
  */
@@ -15,6 +18,19 @@
   const EDITOR_CONFIG = {
     apiBase: "https://compagnon.atlantis-city.com/api/popups",
     debounceDelay: 300, // ms avant update preview
+
+    // Dimensions réelles par format (pour le scale)
+    formatDimensions: {
+      carre: { width: 500, height: 500 },
+      paysage: { width: 600, height: 338 }, // 16:9
+      portrait: { width: 338, height: 600 }, // 9:16
+    },
+
+    // Taille du container preview dans l'UI
+    previewContainerSize: {
+      width: 320,
+      height: 280,
+    },
   };
 
   // === STATE ===
@@ -146,20 +162,24 @@
     return labels[format] || format;
   }
 
+  /**
+   * Calcule le scale pour faire rentrer le format dans le container
+   */
+  function calculateScale(format) {
+    const dims =
+      EDITOR_CONFIG.formatDimensions[format] ||
+      EDITOR_CONFIG.formatDimensions.carre;
+    const container = EDITOR_CONFIG.previewContainerSize;
+
+    const scaleX = container.width / dims.width;
+    const scaleY = container.height / dims.height;
+
+    // Prendre le plus petit pour que tout rentre
+    return Math.min(scaleX, scaleY, 1);
+  }
+
   // === OPEN EDITOR ===
   function openEditor(options) {
-    /*
-     * options = {
-     *   objectName: 'c1_obj',
-     *   shaderName: 'c1_shdr',
-     *   spaceId: 1,
-     *   spaceSlug: 'showroom-demo',
-     *   zoneId: 2,
-     *   zoneSlug: 'zone1',
-     *   format: 'carre'
-     * }
-     */
-
     if (editorState.isOpen) {
       console.warn("Popup Editor: Déjà ouvert");
       return;
@@ -204,70 +224,99 @@
       .map((t, i) => `<option value="${i}">${t.name}</option>`)
       .join("");
 
+    // Calculer les dimensions pour le preview scalé
+    const dims =
+      EDITOR_CONFIG.formatDimensions[editorState.format] ||
+      EDITOR_CONFIG.formatDimensions.carre;
+    const scale = calculateScale(editorState.format);
+    const scaledWidth = dims.width * scale;
+    const scaledHeight = dims.height * scale;
+
     overlay.innerHTML = `
-            <div class="popup-editor-modal">
-                <div class="popup-editor-header">
-                    <div class="popup-editor-title">
-                        <span class="popup-editor-icon">📝</span>
-                        <div>
-                            <h3>Modifier le contenu</h3>
-                            <p>${editorState.objectName} • ${
+      <div class="popup-editor-modal">
+        <div class="popup-editor-header">
+          <div class="popup-editor-title">
+            <span class="popup-editor-icon">📝</span>
+            <div>
+              <h3>Modifier le contenu</h3>
+              <p>${editorState.objectName} • ${
       editorState.zoneSlug || "Global"
     } • ${getFormatLabel(editorState.format)}</p>
-                        </div>
-                    </div>
-                    <button class="popup-editor-close" onclick="window.popupEditor.close()">✕</button>
-                </div>
-                
-                <div class="popup-editor-body">
-                    <div class="popup-editor-panel popup-editor-code">
-                        <div class="popup-editor-panel-header">
-                            <span>Code HTML</span>
-                            <select class="popup-editor-template-select" onchange="window.popupEditor.applyTemplate(this.value)">
-                                <option value="">📋 Templates...</option>
-                                ${templateOptions}
-                            </select>
-                        </div>
-                        <textarea 
-                            id="popup-editor-textarea" 
-                            class="popup-editor-textarea" 
-                            placeholder="Entrez votre code HTML ici..."
-                            spellcheck="false"
-                        ></textarea>
-                    </div>
-                    
-                    <div class="popup-editor-panel popup-editor-preview">
-                        <div class="popup-editor-panel-header">
-                            <span>Prévisualisation</span>
-                            <span class="popup-editor-preview-badge">${getFormatLabel(
-                              editorState.format
-                            )}</span>
-                        </div>
-                        <div class="popup-editor-preview-container popup-editor-preview-${
-                          editorState.format
-                        }">
-                            <div id="popup-editor-preview-content" class="popup-editor-preview-content">
-                                <p class="popup-editor-preview-empty">La prévisualisation apparaîtra ici...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="popup-editor-footer">
-                    <div class="popup-editor-footer-left">
-                        <span id="popup-editor-status" class="popup-editor-status">Chargement...</span>
-                    </div>
-                    <div class="popup-editor-footer-right">
-                        <button class="popup-editor-btn popup-editor-btn-secondary" onclick="window.popupEditor.close()">
-                            Annuler
-                        </button>
-                        <button id="popup-editor-save-btn" class="popup-editor-btn popup-editor-btn-primary" onclick="window.popupEditor.save()" disabled>
-                            💾 Sauvegarder
-                        </button>
-                    </div>
-                </div>
             </div>
-        `;
+          </div>
+          <button class="popup-editor-close" onclick="window.popupEditor.close()">✕</button>
+        </div>
+        
+        <div class="popup-editor-body">
+          <div class="popup-editor-panel popup-editor-code">
+            <div class="popup-editor-panel-header">
+              <span>Code HTML</span>
+              <select class="popup-editor-template-select" onchange="window.popupEditor.applyTemplate(this.value)">
+                <option value="">📋 Templates...</option>
+                ${templateOptions}
+              </select>
+            </div>
+            <textarea 
+              id="popup-editor-textarea" 
+              class="popup-editor-textarea" 
+              placeholder="Entrez votre code HTML ici..."
+              spellcheck="false"
+            ></textarea>
+          </div>
+          
+          <div class="popup-editor-panel popup-editor-preview">
+            <div class="popup-editor-panel-header">
+              <span>Prévisualisation</span>
+              <span class="popup-editor-preview-badge">${getFormatLabel(
+                editorState.format
+              )}</span>
+              <span class="popup-editor-preview-scale">${Math.round(
+                scale * 100
+              )}%</span>
+            </div>
+            <div class="popup-editor-preview-wrapper">
+              <div 
+                class="popup-editor-preview-container" 
+                id="popup-editor-preview-container"
+                style="width: ${scaledWidth}px; height: ${scaledHeight}px;"
+              >
+                <div 
+                  id="popup-editor-preview-scaler"
+                  class="popup-editor-preview-scaler"
+                  style="
+                    width: ${dims.width}px; 
+                    height: ${dims.height}px;
+                    transform: scale(${scale});
+                    transform-origin: top left;
+                  "
+                >
+                  <div id="popup-editor-preview-content" class="popup-editor-preview-content">
+                    <p class="popup-editor-preview-empty">La prévisualisation apparaîtra ici...</p>
+                  </div>
+                </div>
+              </div>
+              <div class="popup-editor-preview-dimensions">
+                ${dims.width} × ${dims.height}px
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="popup-editor-footer">
+          <div class="popup-editor-footer-left">
+            <span id="popup-editor-status" class="popup-editor-status">Chargement...</span>
+          </div>
+          <div class="popup-editor-footer-right">
+            <button class="popup-editor-btn popup-editor-btn-secondary" onclick="window.popupEditor.close()">
+              Annuler
+            </button>
+            <button id="popup-editor-save-btn" class="popup-editor-btn popup-editor-btn-primary" onclick="window.popupEditor.save()" disabled>
+              💾 Sauvegarder
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
 
     document.body.appendChild(overlay);
 
@@ -313,30 +362,24 @@
       const result = await response.json();
 
       if (result.success && result.data && result.data.html_content) {
-        // Contenu existant
         textarea.value = result.data.html_content;
         editorState.originalContent = result.data.html_content;
         statusEl.textContent = "Contenu chargé";
         statusEl.className = "popup-editor-status success";
       } else {
-        // Pas de contenu - nouveau
         textarea.value = "";
         editorState.originalContent = "";
         statusEl.textContent = "Nouveau contenu";
         statusEl.className = "popup-editor-status";
       }
 
-      // Activer le bouton save
       saveBtn.disabled = false;
-
-      // Mettre à jour la preview
       updatePreview();
     } catch (error) {
       console.error("Popup Editor: Erreur chargement", error);
       statusEl.textContent = "Erreur de chargement";
       statusEl.className = "popup-editor-status error";
 
-      // Permettre quand même l'édition
       textarea.value = "";
       editorState.originalContent = "";
       saveBtn.disabled = false;
@@ -348,7 +391,6 @@
     const textarea = document.getElementById("popup-editor-textarea");
     const statusEl = document.getElementById("popup-editor-status");
 
-    // Marquer comme modifié
     editorState.hasChanges = textarea.value !== editorState.originalContent;
 
     if (editorState.hasChanges) {
@@ -359,7 +401,6 @@
       statusEl.className = "popup-editor-status";
     }
 
-    // Debounce preview update
     clearTimeout(editorState.debounceTimer);
     editorState.debounceTimer = setTimeout(
       updatePreview,
@@ -367,7 +408,7 @@
     );
   }
 
-  // === UPDATE PREVIEW ===
+  // === UPDATE PREVIEW (scalé) ===
   function updatePreview() {
     const textarea = document.getElementById("popup-editor-textarea");
     const previewEl = document.getElementById("popup-editor-preview-content");
@@ -379,29 +420,36 @@
     if (html) {
       // Utiliser un iframe pour isoler complètement le contenu
       const iframeHtml = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body { 
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                            background: white;
-                            overflow: auto;
-                        }
-                        img { max-width: 100%; height: auto; }
-                    </style>
-                </head>
-                <body>${html}</body>
-                </html>
-            `;
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body { 
+              width: 100%;
+              height: 100%;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: white;
+              overflow: auto;
+            }
+            body {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100%;
+            }
+            img { max-width: 100%; height: auto; }
+          </style>
+        </head>
+        <body>${html}</body>
+        </html>
+      `;
 
       previewEl.innerHTML = `<iframe id="preview-iframe" style="width:100%;height:100%;border:none;display:block;"></iframe>`;
       const iframe = document.getElementById("preview-iframe");
 
-      // Écrire le contenu dans l'iframe
       const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
       iframeDoc.open();
       iframeDoc.write(iframeHtml);
@@ -426,7 +474,6 @@
 
     const textarea = document.getElementById("popup-editor-textarea");
 
-    // Confirmer si contenu existant
     if (
       textarea.value.trim() &&
       textarea.value !== editorState.originalContent
@@ -434,7 +481,6 @@
       if (
         !confirm("Le contenu actuel sera remplacé par le template. Continuer ?")
       ) {
-        // Reset select
         document.querySelector(".popup-editor-template-select").value = "";
         return;
       }
@@ -443,7 +489,6 @@
     textarea.value = template.html;
     onContentChange();
 
-    // Reset select
     document.querySelector(".popup-editor-template-select").value = "";
 
     console.log("📝 Template appliqué:", template.name);
@@ -516,7 +561,6 @@
 
   // === CLOSE ===
   function closeEditor() {
-    // Vérifier modifications non sauvegardées
     if (editorState.hasChanges) {
       if (
         !confirm(
@@ -535,11 +579,9 @@
       }, 300);
     }
 
-    // Cleanup
     document.removeEventListener("keydown", handleKeyDown);
     clearTimeout(editorState.debounceTimer);
 
-    // Reset state
     editorState.isOpen = false;
     editorState.objectName = null;
     editorState.hasChanges = false;
@@ -552,7 +594,6 @@
     if (e.key === "Escape") {
       closeEditor();
     }
-    // Ctrl+S pour sauvegarder
     if (e.ctrlKey && e.key === "s") {
       e.preventDefault();
       save();
@@ -568,5 +609,5 @@
     isOpen: () => editorState.isOpen,
   };
 
-  console.log("📝 Popup Editor module chargé");
+  console.log("📝 Popup Editor module chargé (v2.0 - preview scalé)");
 })();

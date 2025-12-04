@@ -6,12 +6,6 @@
  * 
  * POST /api/plv/upload.php
  * Content-Type: multipart/form-data
- * 
- * Params:
- *   - space_slug (string) : slug de l'espace
- *   - zone_slug (string|null) : slug de la zone (optionnel)
- *   - shader_name (string) : nom du shader (ex: c1_shdr)
- *   - image (file) : fichier PNG < 5 Mo
  */
 
 require_once __DIR__ . '/../config/init.php';
@@ -64,8 +58,13 @@ if (!preg_match('/^[clp]\d+_shdr$/', $shaderName)) {
 // 🔒 VÉRIFICATION DES PERMISSIONS
 // ============================================
 function canUploadPLV($user, $spaceSlug, $zoneSlug) {
+    // DEBUG: Log les infos reçues
+    error_log("PLV Permission Check - User ID: {$user['id']}, Email: {$user['email']}, GlobalRole: {$user['global_role']}");
+    error_log("PLV Permission Check - SpaceSlug: '$spaceSlug', ZoneSlug: '$zoneSlug'");
+    
     // Super admin = accès total
     if ($user['global_role'] === 'super_admin') {
+        error_log("PLV Permission: GRANTED (super_admin)");
         return true;
     }
     
@@ -81,9 +80,16 @@ function canUploadPLV($user, $spaceSlug, $zoneSlug) {
     $stmt->execute([':user_id' => $user['id']]);
     $roles = $stmt->fetchAll();
     
+    // DEBUG: Log tous les rôles
+    error_log("PLV Permission - User roles count: " . count($roles));
+    foreach ($roles as $i => $role) {
+        error_log("PLV Permission - Role[$i]: space='{$role['space_slug']}', zone='{$role['zone_slug']}', role='{$role['role']}'");
+    }
+    
     foreach ($roles as $role) {
         // Space admin de cet espace = accès à tout l'espace
         if ($role['space_slug'] === $spaceSlug && $role['role'] === 'space_admin') {
+            error_log("PLV Permission: GRANTED (space_admin of $spaceSlug)");
             return true;
         }
         
@@ -92,15 +98,17 @@ function canUploadPLV($user, $spaceSlug, $zoneSlug) {
             $role['zone_slug'] === $zoneSlug && 
             $role['role'] === 'zone_admin' &&
             !empty($zoneSlug)) {
+            error_log("PLV Permission: GRANTED (zone_admin of $zoneSlug)");
             return true;
         }
     }
     
+    error_log("PLV Permission: DENIED - No matching role found");
     return false;
 }
 
 if (!canUploadPLV($user, $spaceSlug, $zoneSlug)) {
-    errorResponse('Permission refusée pour cet espace/zone', 403);
+    errorResponse('Vous n\'avez pas les droits pour modifier ce PLV', 403);
 }
 
 // ============================================
@@ -128,7 +136,7 @@ $tmpPath = $file['tmp_name'];
 $fileSize = $file['size'];
 
 // Vérifier la taille (5 Mo max)
-$maxSize = 5 * 1024 * 1024; // 5 Mo
+$maxSize = 5 * 1024 * 1024;
 if ($fileSize > $maxSize) {
     errorResponse('Fichier trop volumineux (max 5 Mo)', 400);
 }
@@ -150,9 +158,8 @@ if ($extension !== 'png') {
 // ============================================
 // 📝 GÉNÉRATION DU NOM DE FICHIER
 // ============================================
-// Extraire préfixe et numéro du shader: c1_shdr → C1, l2_shdr → L2
 preg_match('/^([clp])(\d+)_shdr$/', $shaderName, $matches);
-$prefix = strtoupper($matches[1]); // c → C, l → L, p → P
+$prefix = strtoupper($matches[1]);
 $number = $matches[2];
 $targetFileName = "template_{$prefix}{$number}.png";
 
@@ -161,7 +168,7 @@ $targetFileName = "template_{$prefix}{$number}.png";
 // ============================================
 $uploadDir = dirname(dirname(__DIR__)) . '/plv/' . $spaceSlug;
 
-// Sécurité : valider le slug (pas de path traversal)
+// Sécurité : valider le slug
 if (!preg_match('/^[a-z0-9_-]+$/', $spaceSlug)) {
     errorResponse('space_slug invalide', 400);
 }
@@ -177,12 +184,10 @@ if (!is_dir($uploadDir)) {
 // ============================================
 $targetPath = $uploadDir . '/' . $targetFileName;
 
-// Supprimer l'ancien fichier s'il existe
 if (file_exists($targetPath)) {
     unlink($targetPath);
 }
 
-// Déplacer le fichier uploadé
 if (!move_uploaded_file($tmpPath, $targetPath)) {
     errorResponse('Erreur lors de la sauvegarde du fichier', 500);
 }
@@ -209,7 +214,6 @@ try {
         ':ip_address' => getClientIP()
     ]);
     
-    // Log dans activity_logs aussi
     logActivity($user['id'], 'plv_upload', 'plv', null, [
         'space_slug' => $spaceSlug,
         'zone_slug' => $zoneSlug,
@@ -219,7 +223,6 @@ try {
     
 } catch (PDOException $e) {
     error_log("Erreur log upload PLV: " . $e->getMessage());
-    // On ne fait pas échouer l'upload pour un problème de log
 }
 
 // ============================================

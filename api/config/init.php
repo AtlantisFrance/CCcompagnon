@@ -209,7 +209,12 @@ function getAuthToken() {
         return $_COOKIE['atlantis_token'];
     }
     
-    // === MÉTHODE 5 : Paramètre GET (fallback) ===
+    // === MÉTHODE 5 : POST body (⭐ WORKAROUND OVH) ===
+    if (!empty($_POST['auth_token'])) {
+        return $_POST['auth_token'];
+    }
+    
+    // === MÉTHODE 6 : Paramètre GET (fallback) ===
     if (isset($_GET['token'])) {
         return $_GET['token'];
     }

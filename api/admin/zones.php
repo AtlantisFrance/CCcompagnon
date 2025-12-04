@@ -41,15 +41,6 @@ try {
                     errorResponse('Zone non trouvée', 404);
                 }
 
-                // Récupérer les contenus de la zone
-                $stmt = $db->prepare("
-                    SELECT * FROM zone_contents 
-                    WHERE zone_id = :zone_id
-                    ORDER BY content_key
-                ");
-                $stmt->execute([':zone_id' => $_GET['id']]);
-                $zone['contents'] = $stmt->fetchAll();
-
                 // Récupérer les admins de la zone
                 $stmt = $db->prepare("
                     SELECT u.id, u.email, u.first_name, u.last_name, usr.role
@@ -66,7 +57,6 @@ try {
                 // Liste les zones d'un espace
                 $stmt = $db->prepare("
                     SELECT z.*,
-                           (SELECT COUNT(*) FROM zone_contents WHERE zone_id = z.id) as content_count,
                            (SELECT COUNT(*) FROM user_space_roles WHERE zone_id = z.id) as admin_count
                     FROM zones z
                     WHERE z.space_id = :space_id
@@ -75,17 +65,26 @@ try {
                 $stmt->execute([':space_id' => $_GET['space_id']]);
                 $zones = $stmt->fetchAll();
 
+                // Ajouter content_count à 0 pour compatibilité
+                foreach ($zones as &$zone) {
+                    $zone['content_count'] = 0;
+                }
+
                 successResponse(['zones' => $zones]);
             } else {
                 // Liste toutes les zones
                 $stmt = $db->query("
-                    SELECT z.*, s.name as space_name, s.slug as space_slug,
-                           (SELECT COUNT(*) FROM zone_contents WHERE zone_id = z.id) as content_count
+                    SELECT z.*, s.name as space_name, s.slug as space_slug
                     FROM zones z
                     JOIN spaces s ON s.id = z.space_id
                     ORDER BY s.name, z.name
                 ");
                 $zones = $stmt->fetchAll();
+
+                // Ajouter content_count à 0 pour compatibilité
+                foreach ($zones as &$zone) {
+                    $zone['content_count'] = 0;
+                }
 
                 successResponse(['zones' => $zones]);
             }
@@ -207,7 +206,7 @@ try {
                 errorResponse('Zone non trouvée', 404);
             }
 
-            // Supprimer (les cascades s'occupent des contenus et rôles)
+            // Supprimer (les cascades s'occupent des rôles)
             $stmt = $db->prepare("DELETE FROM zones WHERE id = :id");
             $stmt->execute([':id' => $zoneId]);
 

@@ -36,16 +36,21 @@ try {
                     errorResponse('Espace non trouvé', 404);
                 }
 
-                // Récupérer ses zones
+                // Récupérer ses zones (sans zone_contents)
                 $stmt = $db->prepare("
-                    SELECT z.*, 
-                           (SELECT COUNT(*) FROM zone_contents WHERE zone_id = z.id) as content_count
+                    SELECT z.*
                     FROM zones z
                     WHERE z.space_id = :space_id
                     ORDER BY z.name
                 ");
                 $stmt->execute([':space_id' => $_GET['id']]);
-                $space['zones'] = $stmt->fetchAll();
+                $zones = $stmt->fetchAll();
+                
+                // Ajouter content_count = 0 pour compatibilité
+                foreach ($zones as &$zone) {
+                    $zone['content_count'] = 0;
+                }
+                $space['zones'] = $zones;
 
                 // Récupérer les admins de l'espace
                 $stmt = $db->prepare("

@@ -1,18 +1,10 @@
 <?php
 /**
  * ============================================
- * 🎨 API PLV - GESTION DES PROJETS
+ * 🎨 API PLV - PROJETS
  * ============================================
- * 
- * GET    /api/plv/projects.php           → Liste tous les projets
- * GET    /api/plv/projects.php?id=X      → Détails d'un projet
- * POST   /api/plv/projects.php           → Créer un projet
- * DELETE /api/plv/projects.php?id=X      → Supprimer un projet
- * 
- * ⚠️ PRÉREQUIS : Ajouter la colonne slots_config à la table plv_projects :
- * ALTER TABLE plv_projects ADD COLUMN slots_config TEXT AFTER description;
+ * LIMITE : 1 projet PLV par espace maximum
  */
-
 require_once __DIR__ . '/../config/init.php';
 
 // Authentification requise
@@ -24,236 +16,208 @@ try {
     $db = getDB();
 
     switch ($method) {
-        // ============================================
-        // GET - Liste ou détails projet
-        // ============================================
+        // === LISTE OU DÉTAILS ===
         case 'GET':
             if (isset($_GET['id'])) {
-                // Détails d'un projet spécifique
                 $stmt = $db->prepare("
-                    SELECT p.*, 
-                           s.slug as space_slug, 
-                           s.name as space_name,
-                           u.first_name as creator_first_name,
-                           u.last_name as creator_last_name
+                    SELECT p.*, s.slug as space_slug, s.name as space_name 
                     FROM plv_projects p
                     LEFT JOIN spaces s ON s.id = p.space_id
-                    LEFT JOIN users u ON u.id = p.created_by
                     WHERE p.id = :id
                 ");
                 $stmt->execute([':id' => $_GET['id']]);
                 $project = $stmt->fetch();
 
-                if (!$project) {
-                    errorResponse('Projet PLV non trouvé', 404);
-                }
-
-                // Ajouter folder_name (= space_slug)
+                if (!$project) errorResponse('Projet non trouvé', 404);
+                
                 $project['folder_name'] = $project['space_slug'];
-
                 successResponse(['project' => $project]);
-
             } else {
-                // Liste tous les projets
                 $stmt = $db->query("
-                    SELECT p.*, 
-                           s.slug as space_slug, 
-                           s.name as space_name
+                    SELECT p.*, s.slug as space_slug, s.name as space_name 
                     FROM plv_projects p
                     LEFT JOIN spaces s ON s.id = p.space_id
-                    ORDER BY s.name, p.created_at DESC
+                    ORDER BY p.created_at DESC
                 ");
                 $projects = $stmt->fetchAll();
-
-                // Ajouter folder_name à chaque projet
-                foreach ($projects as &$project) {
-                    $project['folder_name'] = $project['space_slug'];
+                
+                foreach ($projects as &$p) {
+                    $p['folder_name'] = $p['space_slug'];
+                    $slots = json_decode($p['slots_config'] ?? '[]', true);
+                    $p['total_slots'] = is_array($slots) ? count($slots) : 0;
                 }
-
+                
                 successResponse(['projects' => $projects]);
             }
             break;
 
-        // ============================================
-        // POST - Créer un projet PLV
-        // ============================================
+        // === CRÉATION ===
         case 'POST':
             $data = getPostData();
             
             $spaceId = getRequired($data, 'space_id');
             $name = getRequired($data, 'name');
-            $slotsConfig = getRequired($data, 'slots_config');
             $description = getOptional($data, 'description', '');
+            
+            // ============================================
+            // 🔒 VÉRIFICATION UNICITÉ : 1 projet par espace
+            // ============================================
+            $stmt = $db->prepare("SELECT id, name FROM plv_projects WHERE space_id = :space_id");
+            $stmt->execute([':space_id' => $spaceId]);
+            $existingProject = $stmt->fetch();
+            
+            if ($existingProject) {
+                errorResponse('Cet espace a déjà un projet PLV ("' . $existingProject['name'] . '"). Supprimez-le d\'abord pour en créer un nouveau.', 409);
+            }
+            // ============================================
+            
+            $slotsInput = $data['slots_config'] ?? [];
 
-            // Vérifier que l'espace existe et récupérer son slug
-            $stmt = $db->prepare("SELECT id, slug, name FROM spaces WHERE id = :id");
+            if (is_array($slotsInput)) {
+                $slotsArray = $slotsInput;
+                $slotsJson = json_encode($slotsInput);
+            } else {
+                $slotsArray = json_decode($slotsInput, true);
+                $slotsJson = $slotsInput;
+            }
+
+            if (!is_array($slotsArray) || empty($slotsArray)) {
+                errorResponse('Configuration des slots invalide ou vide', 400);
+            }
+
+            // 1. Récupérer le slug de l'espace pour le dossier
+            $stmt = $db->prepare("SELECT slug FROM spaces WHERE id = :id");
             $stmt->execute([':id' => $spaceId]);
-            $space = $stmt->fetch();
+            $spaceSlug = $stmt->fetchColumn();
 
-            if (!$space) {
-                errorResponse('Espace non trouvé', 404);
-            }
+            if (!$spaceSlug) errorResponse('Espace introuvable', 404);
 
-            $spaceSlug = $space['slug'];
-
-            // Valider le JSON des slots
-            $slots = json_decode($slotsConfig, true);
-            if (!$slots || !is_array($slots)) {
-                errorResponse('Configuration des slots invalide', 400);
-            }
-
-            if (count($slots) === 0) {
-                errorResponse('Au moins un slot est requis', 400);
-            }
-
-            // Créer le dossier PLV pour cet espace s'il n'existe pas
+            // 2. Préparation des dossiers
             $plvBaseDir = realpath(__DIR__ . '/../../plv');
             $plvProjectDir = $plvBaseDir . '/' . $spaceSlug;
+            $templatesDir = $plvBaseDir . '/templates';
 
             if (!is_dir($plvProjectDir)) {
                 if (!@mkdir($plvProjectDir, 0755, true)) {
-                    error_log("Impossible de créer le dossier: $plvProjectDir");
-                    errorResponse('Impossible de créer le dossier du projet', 500);
+                    errorResponse("Impossible de créer le dossier du projet ($spaceSlug)", 500);
                 }
             }
 
-            // Copier les templates pour chaque slot
-            $templatesDir = $plvBaseDir . '/templates';
+            // 3. Copie des images templates
             $copiedFiles = [];
             $errors = [];
 
-            foreach ($slots as $slot) {
-                $format = $slot['format'];                    // carre, paysage, portrait
-                $file = $slot['file'];                        // template_C1.png, template_L1.png, template_P1.png
-                $isTransparent = $slot['transparent'] ?? false;
+            foreach ($slotsArray as $slot) {
+                $format = $slot['format']; 
+                $file = $slot['file'];
+                $isTransparent = !empty($slot['transparent']);
                 
-                // Sous-dossier selon transparence : opaque ou transparent
                 $transparencyDir = $isTransparent ? 'transparent' : 'opaque';
+                $sourceFile = "$templatesDir/$format/$transparencyDir/$file";
+                $destFile = "$plvProjectDir/$file";
 
-                // Source : /plv/templates/[format]/[opaque|transparent]/[file]
-                $sourceFile = $templatesDir . '/' . $format . '/' . $transparencyDir . '/' . $file;
-                $destFile = $plvProjectDir . '/' . $file;
-
-                // Si le fichier destination existe déjà, ne pas écraser
-                if (file_exists($destFile)) {
-                    $copiedFiles[] = $file . ' (existant)';
-                    continue;
-                }
-
-                if (file_exists($sourceFile)) {
-                    if (@copy($sourceFile, $destFile)) {
-                        $copiedFiles[] = $file . ' (' . $transparencyDir . ')';
+                if (!file_exists($destFile)) {
+                    if (file_exists($sourceFile)) {
+                        if (@copy($sourceFile, $destFile)) {
+                            $copiedFiles[] = $file;
+                        } else {
+                            $errors[] = "Erreur copie: $file";
+                        }
                     } else {
-                        $errors[] = "Impossible de copier $file";
+                        error_log("Template manquant: $sourceFile");
                     }
-                } else {
-                    $errors[] = "Template non trouvé: $format/$transparencyDir/$file";
                 }
             }
 
-            // Insérer le projet en BDD
+            // 4. Insertion en BDD
             $stmt = $db->prepare("
                 INSERT INTO plv_projects (name, space_id, description, slots_config, is_active, created_by, created_at, updated_at)
                 VALUES (:name, :space_id, :description, :slots_config, 1, :created_by, NOW(), NOW())
             ");
+            
             $stmt->execute([
                 ':name' => trim($name),
                 ':space_id' => $spaceId,
                 ':description' => trim($description),
-                ':slots_config' => $slotsConfig,
+                ':slots_config' => $slotsJson,
                 ':created_by' => $currentUser['id']
             ]);
 
             $projectId = $db->lastInsertId();
 
-            // Logger l'activité
-            logActivity($currentUser['id'], 'plv_project_created', 'plv_projects', $projectId, [
-                'name' => $name,
-                'space_slug' => $spaceSlug,
-                'slots_count' => count($slots),
-                'copied_files' => count($copiedFiles),
-                'errors' => $errors
-            ]);
-
-            $response = [
+            successResponse([
                 'project_id' => (int)$projectId,
-                'folder' => $spaceSlug,
-                'slots_count' => count($slots),
-                'message' => 'Projet PLV créé avec succès'
-            ];
-
-            if (!empty($errors)) {
-                $response['warnings'] = $errors;
-            }
-
-            successResponse($response);
+                'message' => 'Projet créé avec succès',
+                'files_copied' => count($copiedFiles),
+                'warnings' => $errors
+            ]);
             break;
 
-        // ============================================
-        // DELETE - Supprimer un projet PLV
-        // ============================================
+        // === SUPPRESSION ===
         case 'DELETE':
-            if (!isset($_GET['id'])) {
-                errorResponse('ID projet requis', 400);
-            }
-
-            $projectId = $_GET['id'];
-
-            // Récupérer le projet pour vérifier qu'il existe
+            if (!isset($_GET['id'])) errorResponse('ID requis', 400);
+            
+            $id = $_GET['id'];
+            
             $stmt = $db->prepare("
-                SELECT p.*, s.slug as space_slug
+                SELECT p.*, s.slug as space_slug 
                 FROM plv_projects p
                 LEFT JOIN spaces s ON s.id = p.space_id
                 WHERE p.id = :id
             ");
-            $stmt->execute([':id' => $projectId]);
+            $stmt->execute([':id' => $id]);
             $project = $stmt->fetch();
-
-            if (!$project) {
-                errorResponse('Projet PLV non trouvé', 404);
-            }
-
-            // Supprimer les fichiers du dossier
-            $plvProjectDir = realpath(__DIR__ . '/../../plv') . '/' . $project['space_slug'];
-            $deletedFiles = [];
             
-            if (is_dir($plvProjectDir)) {
-                $slots = json_decode($project['slots_config'], true) ?: [];
-                foreach ($slots as $slot) {
-                    $file = $plvProjectDir . '/' . $slot['file'];
-                    if (file_exists($file)) {
-                        if (@unlink($file)) {
-                            $deletedFiles[] = $slot['file'];
+            if (!$project) errorResponse('Projet introuvable', 404);
+
+            // === SUPPRESSION DU DOSSIER PLV ===
+            $spaceSlug = $project['space_slug'];
+            $deletedFiles = [];
+            $deleteErrors = [];
+            
+            if ($spaceSlug) {
+                $plvBaseDir = realpath(__DIR__ . '/../../plv');
+                $plvProjectDir = $plvBaseDir . '/' . $spaceSlug;
+                
+                if ($plvProjectDir && is_dir($plvProjectDir) && strpos($plvProjectDir, $plvBaseDir) === 0) {
+                    $files = glob($plvProjectDir . '/*');
+                    foreach ($files as $file) {
+                        if (is_file($file)) {
+                            if (@unlink($file)) {
+                                $deletedFiles[] = basename($file);
+                            } else {
+                                $deleteErrors[] = basename($file);
+                            }
                         }
                     }
-                }
-                
-                // Supprimer le dossier s'il est vide
-                $remainingFiles = @scandir($plvProjectDir);
-                if ($remainingFiles && count($remainingFiles) <= 2) { // . et ..
-                    @rmdir($plvProjectDir);
+                    
+                    if (count(glob($plvProjectDir . '/*')) === 0) {
+                        @rmdir($plvProjectDir);
+                    }
                 }
             }
 
-            // Supprimer l'entrée en BDD
             $stmt = $db->prepare("DELETE FROM plv_projects WHERE id = :id");
-            $stmt->execute([':id' => $projectId]);
+            $stmt->execute([':id' => $id]);
 
-            // Logger l'activité
-            logActivity($currentUser['id'], 'plv_project_deleted', 'plv_projects', $projectId, [
+            logActivity($currentUser['id'], 'plv_project_deleted', 'plv_project', $id, [
                 'name' => $project['name'],
-                'space_slug' => $project['space_slug'],
-                'deleted_files' => $deletedFiles
+                'space_slug' => $spaceSlug,
+                'files_deleted' => count($deletedFiles)
             ]);
 
-            successResponse(['message' => 'Projet PLV supprimé']);
+            successResponse([
+                'message' => 'Projet supprimé',
+                'files_deleted' => count($deletedFiles),
+                'delete_errors' => $deleteErrors
+            ]);
             break;
 
         default:
             errorResponse('Méthode non autorisée', 405);
     }
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
     error_log("Erreur plv/projects: " . $e->getMessage());
     errorResponse('Erreur serveur: ' . $e->getMessage(), 500);
 }

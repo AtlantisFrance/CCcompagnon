@@ -3,8 +3,7 @@
  * ============================================
  * 📊 ADMIN - DASHBOARD
  * ============================================
- * 
- * GET /api/admin/dashboard.php
+ * * GET /api/admin/dashboard.php
  * Retourne les statistiques globales du CRM
  */
 
@@ -48,10 +47,6 @@ try {
     ");
     $zoneStats = $stmt->fetch();
 
-    // === STATS CONTENUS ===
-    $stmt = $db->query("SELECT COUNT(*) as total FROM zone_contents");
-    $contentStats = $stmt->fetch();
-
     // === DERNIERS INSCRITS ===
     $stmt = $db->query("
         SELECT id, first_name, last_name, email, company, created_at 
@@ -92,9 +87,6 @@ try {
         'zones' => [
             'total' => (int)$zoneStats['total'],
             'active' => (int)$zoneStats['active']
-        ],
-        'contents' => [
-            'total' => (int)$contentStats['total']
         ],
         'recent_users' => $recentUsers,
         'recent_activity' => $recentActivity

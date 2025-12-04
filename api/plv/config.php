@@ -1,18 +1,16 @@
 <?php
 /**
  * ============================================
- * ⚙️ API PLV - CONFIG POUR SHAPESPARK
+ * ⚙️ API PLV - CONFIG (Version JSON)
  * ============================================
- * 
- * GET /api/plv/config.php?project_id=X
- * 
- * Endpoint PUBLIC (pas d'auth) pour récupérer
- * la config d'un projet PLV au format autotextures.js
+ * * GET /api/plv/config.php?project_id=X
+ * * Appelé par Shapespark pour charger les textures.
+ * Lit la configuration depuis le JSON de plv_projects
+ * au lieu de la table plv_slots obsolète.
  */
 
 require_once __DIR__ . '/../config/database.php';
 
-// CORS permissif pour Shapespark
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
@@ -24,25 +22,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Méthode non autorisée']);
-    exit;
-}
-
-if (!isset($_GET['project_id'])) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'project_id requis']);
-    exit;
-}
-
 try {
     $db = getDB();
-    $projectId = $_GET['project_id'];
+    $projectId = isset($_GET['project_id']) ? $_GET['project_id'] : null;
 
-    // Récupérer le projet
+    if (!$projectId) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'project_id requis']);
+        exit;
+    }
+
+    // 1. Récupérer le projet et le JSON slots_config
     $stmt = $db->prepare("
-        SELECT p.*, s.slug as space_slug, z.slug as zone_slug
+        SELECT p.*, s.slug as space_slug, z.slug as zone_slug 
         FROM plv_projects p
         JOIN spaces s ON s.id = p.space_id
         LEFT JOIN zones z ON z.id = p.zone_id
@@ -57,34 +49,42 @@ try {
         exit;
     }
 
-    // Récupérer les slots
-    $stmt = $db->prepare("
-        SELECT * FROM plv_slots 
-        WHERE project_id = :project_id
-        ORDER BY format, slot_number
-    ");
-    $stmt->execute([':project_id' => $projectId]);
-    $slots = $stmt->fetchAll();
-
-    // Construire la config pour autotextures.js
-    $folderName = 'plvid' . str_pad($projectId, 6, '0', STR_PAD_LEFT);
+    // 2. Décoder le JSON des slots
+    // Le JSON est stocké dans la colonne 'slots_config'
+    $slots = json_decode($project['slots_config'], true);
+    
+    if (!is_array($slots)) {
+        $slots = [];
+    }
+    
+    // 3. Construire la config pour autotextures.js
     $textures = [];
     $opaqueList = [];
-
+    
+    // Nom du dossier où sont stockées les images (slug de l'espace)
+    $folderName = $project['space_slug']; 
+    
     foreach ($slots as $slot) {
-        $filename = 'template_' . $slot['format'] . $slot['slot_number'] . '.png';
-        $shaderName = 'plv_' . strtolower($slot['format']) . '_' . str_pad($slot['slot_number'], 2, '0', STR_PAD_LEFT) . '_shdr';
+        // Format attendu du slot dans le JSON :
+        // { "format": "carre", "index": 1, "shader": "c1_shdr", "file": "template_C1.png", "transparent": true }
         
-        $textures[$shaderName] = $filename;
+        $shaderName = isset($slot['shader']) ? $slot['shader'] : (isset($slot['shader_name']) ? $slot['shader_name'] : '');
+        $filename = isset($slot['file']) ? $slot['file'] : '';
+        $isTransparent = isset($slot['transparent']) && $slot['transparent'] == true;
         
-        if (!$slot['is_transparent']) {
-            $opaqueList[] = $shaderName;
+        if ($shaderName && $filename) {
+            $textures[$shaderName] = $filename;
+            
+            // Si le slot n'est PAS transparent, on l'ajoute à la liste opaque
+            if (!$isTransparent) {
+                $opaqueList[] = $shaderName;
+            }
         }
     }
 
-    $config = [
+    $response = [
         'success' => true,
-        'projectId' => $folderName,
+        'projectId' => $folderName, // Utilisé pour construire l'URL des images
         'projectName' => $project['name'],
         'space' => $project['space_slug'],
         'zone' => $project['zone_slug'],
@@ -93,10 +93,10 @@ try {
         'batchSize' => 3
     ];
 
-    echo json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
     error_log("Erreur plv/config: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Erreur serveur']);
+    echo json_encode(['success' => false, 'error' => 'Erreur serveur: ' . $e->getMessage()]);
 }

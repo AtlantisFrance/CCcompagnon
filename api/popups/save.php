@@ -14,7 +14,7 @@
  */
 
 define('ATLANTIS_API', true);
-require_once __DIR__ . '/../config/init.php';
+require_once __DIR__ . '/../config/database.php';
 
 // CORS
 header("Access-Control-Allow-Origin: *");
@@ -28,26 +28,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    errorResponse('Méthode non autorisée', 405);
+    http_response_code(405);
+    echo json_encode(['success' => false, 'error' => 'Méthode non autorisée']);
+    exit;
 }
 
-// Auth requise
-$currentUser = requireAuth();
+// ============================================
+// 🔐 AUTHENTIFICATION MANUELLE (Workaround OVH)
+// ============================================
+
+// 1. Lire le body JSON d'abord
+$rawBody = file_get_contents('php://input');
+$data = json_decode($rawBody, true);
+
+if (!$data) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'JSON invalide']);
+    exit;
+}
+
+// 2. Récupérer le token depuis le body (workaround OVH)
+$token = null;
+
+// Source 1: body JSON (prioritaire pour OVH)
+if (!empty($data['auth_token'])) {
+    $token = $data['auth_token'];
+}
+
+// Source 2: Header Authorization (si pas bloqué)
+if (!$token) {
+    $headers = getallheaders();
+    if (!empty($headers['Authorization'])) {
+        $token = str_replace('Bearer ', '', $headers['Authorization']);
+    }
+}
+
+// Source 3: $_SERVER
+if (!$token && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
+    $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
+}
+
+if (!$token) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'Non authentifié']);
+    exit;
+}
+
+// 3. Valider le token et récupérer l'utilisateur
+try {
+    $db = getDB();
+    
+    $stmt = $db->prepare("
+        SELECT u.*, us.token 
+        FROM user_sessions us
+        JOIN users u ON u.id = us.user_id
+        WHERE us.token = :token 
+        AND us.expires_at > NOW()
+        AND u.status = 'active'
+    ");
+    $stmt->execute([':token' => $token]);
+    $currentUser = $stmt->fetch();
+
+    if (!$currentUser) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'Token invalide ou expiré']);
+        exit;
+    }
+
+    // Charger les space_roles
+    $stmt = $db->prepare("
+        SELECT usr.role, s.slug as space_slug, z.slug as zone_slug
+        FROM user_space_roles usr
+        JOIN spaces s ON s.id = usr.space_id
+        LEFT JOIN zones z ON z.id = usr.zone_id
+        WHERE usr.user_id = :user_id
+    ");
+    $stmt->execute([':user_id' => $currentUser['id']]);
+    $currentUser['space_roles'] = $stmt->fetchAll();
+
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Erreur authentification: ' . $e->getMessage()]);
+    exit;
+}
+
+// ============================================
+// 📝 TRAITEMENT DE LA REQUÊTE
+// ============================================
 
 try {
-    $data = getPostData();
+    // Validation des champs requis
+    $requiredFields = ['space_slug', 'object_name', 'template_type', 'template_config'];
+    foreach ($requiredFields as $field) {
+        if (empty($data[$field])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => "Champ requis manquant: $field"]);
+            exit;
+        }
+    }
 
-    // Validation
-    $spaceSlug = getRequired($data, 'space_slug');
-    $objectName = getRequired($data, 'object_name');
-    $templateType = getRequired($data, 'template_type');
-    $templateConfig = getRequired($data, 'template_config');
-
-    $zoneSlug = getOptional($data, 'zone_slug', '');
-    $shaderName = getOptional($data, 'shader_name', '');
-    $format = getOptional($data, 'format', '');
-
-    $db = getDB();
+    $spaceSlug = trim($data['space_slug']);
+    $objectName = trim($data['object_name']);
+    $templateType = trim($data['template_type']);
+    $templateConfig = $data['template_config'];
+    $zoneSlug = !empty($data['zone_slug']) ? trim($data['zone_slug']) : '';
+    $shaderName = !empty($data['shader_name']) ? trim($data['shader_name']) : '';
+    $format = !empty($data['format']) ? trim($data['format']) : '';
 
     // 1. Récupérer le space_id
     $stmt = $db->prepare("SELECT id, slug FROM spaces WHERE slug = :slug");
@@ -55,7 +141,9 @@ try {
     $space = $stmt->fetch();
 
     if (!$space) {
-        errorResponse('Espace non trouvé', 404);
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'Espace non trouvé']);
+        exit;
     }
 
     // 2. Récupérer le zone_id (optionnel)
@@ -90,7 +178,9 @@ try {
     }
 
     if (!$hasAccess) {
-        errorResponse('Accès refusé à cette zone', 403);
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Accès refusé à cette zone']);
+        exit;
     }
 
     // 4. Vérifier si un template existe déjà
@@ -161,60 +251,73 @@ try {
     if (!$popupsDir) {
         $popupsDir = __DIR__ . '/../../popups';
         if (!is_dir($popupsDir)) {
-            mkdir($popupsDir, 0755, true);
+            if (!@mkdir($popupsDir, 0755, true)) {
+                error_log("Impossible de créer le dossier popups: $popupsDir");
+            }
         }
     }
 
     $spaceDir = $popupsDir . '/' . $spaceSlug;
     if (!is_dir($spaceDir)) {
-        mkdir($spaceDir, 0755, true);
+        if (!@mkdir($spaceDir, 0755, true)) {
+            error_log("Impossible de créer le dossier: $spaceDir");
+        }
     }
 
     $jsFileName = $objectName . '-popup.js';
     $jsFilePath = $spaceDir . '/' . $jsFileName;
-    $bytesWritten = file_put_contents($jsFilePath, $jsContent);
+    $bytesWritten = @file_put_contents($jsFilePath, $jsContent);
 
-    if ($bytesWritten === false) {
+    $fileGenerated = ($bytesWritten !== false);
+    if (!$fileGenerated) {
         error_log("Impossible d'écrire le fichier: $jsFilePath");
-        errorResponse('Erreur lors de la génération du fichier JS', 500);
     }
 
     // 7. Mettre à jour le manifest
-    updateManifest($spaceDir, $objectName, $templateType);
+    if ($fileGenerated) {
+        updateManifest($spaceDir, $objectName, $templateType);
+    }
 
-    // 8. Logger l'activité
-    logActivity($currentUser['id'], 'popup_template_' . $action, 'popup_contents', $templateId, [
-        'object_name' => $objectName,
-        'template_type' => $templateType,
-        'space_slug' => $spaceSlug,
-        'zone_slug' => $zoneSlug
-    ]);
+    // 8. Logger l'activité (si la fonction existe)
+    if (function_exists('logActivity')) {
+        logActivity($currentUser['id'], 'popup_template_' . $action, 'popup_contents', $templateId, [
+            'object_name' => $objectName,
+            'template_type' => $templateType,
+            'space_slug' => $spaceSlug,
+            'zone_slug' => $zoneSlug
+        ]);
+    }
 
-    successResponse([
+    // Réponse succès
+    echo json_encode([
+        'success' => true,
         'template_id' => (int)$templateId,
         'action' => $action,
-        'js_file' => $spaceSlug . '/' . $jsFileName,
-        'js_url' => 'https://compagnon.atlantis-city.com/popups/' . $spaceSlug . '/' . $jsFileName,
+        'js_file' => $fileGenerated ? $spaceSlug . '/' . $jsFileName : null,
+        'js_url' => $fileGenerated ? 'https://compagnon.atlantis-city.com/popups/' . $spaceSlug . '/' . $jsFileName : null,
+        'file_generated' => $fileGenerated,
         'timestamp' => time(),
         'message' => 'Template sauvegardé avec succès'
     ]);
 
+} catch (PDOException $e) {
+    error_log("Erreur popups/save PDO: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Erreur base de données']);
 } catch (Exception $e) {
     error_log("Erreur popups/save: " . $e->getMessage());
-    errorResponse('Erreur serveur: ' . $e->getMessage(), 500);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'error' => 'Erreur serveur: ' . $e->getMessage()]);
 }
 
 
-/**
- * ============================================
- * 🔧 GÉNÉRATION DU FICHIER JS
- * ============================================
- */
+// ============================================
+// 🔧 FONCTIONS DE GÉNÉRATION JS
+// ============================================
+
 function generatePopupJS($objectName, $templateType, $config, $spaceSlug) {
     $timestamp = date('Y-m-d H:i:s');
-    $configJson = json_encode($config, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     
-    // Sélectionner le générateur selon le type
     switch ($templateType) {
         case 'contact':
             return generateContactPopupJS($objectName, $config, $timestamp);
@@ -229,25 +332,26 @@ function generatePopupJS($objectName, $templateType, $config, $spaceSlug) {
     }
 }
 
+function escapeJS($str) {
+    if (!$str) return "";
+    return str_replace(
+        ["\\", '"', "'", "\n", "\r"],
+        ["\\\\", '\\"', "\\'", "\\n", "\\r"],
+        $str
+    );
+}
 
 /**
  * 📇 TEMPLATE CONTACT
  */
 function generateContactPopupJS($objectName, $config, $timestamp) {
-    $name = addslashes($config['name'] ?? 'Contact');
-    $title = addslashes($config['title'] ?? '');
-    $avatar = addslashes($config['avatar'] ?? 'AB');
+    $name = escapeJS($config['name'] ?? 'Contact');
+    $title = escapeJS($config['title'] ?? '');
+    $avatar = escapeJS($config['avatar'] ?? 'AB');
     $bgColor = $config['colors']['background'] ?? '#1a1a2e';
     $accentColor = $config['colors']['accent'] ?? '#3b82f6';
     $textColor = $config['colors']['text'] ?? '#ffffff';
-    
-    // Générer les contacts
-    $contactsJS = '';
-    if (!empty($config['contacts'])) {
-        $contactsJS = json_encode($config['contacts'], JSON_UNESCAPED_UNICODE);
-    } else {
-        $contactsJS = '[]';
-    }
+    $contactsJS = json_encode($config['contacts'] ?? [], JSON_UNESCAPED_UNICODE);
 
     return <<<JS
 /**
@@ -273,7 +377,6 @@ function generateContactPopupJS($objectName, $config, $timestamp) {
 
   let currentPopup = null;
 
-  // === STYLES ===
   const STYLES = `
     .popup-{$objectName}-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -399,12 +502,10 @@ function generateContactPopupJS($objectName, $config, $timestamp) {
     }
   }
 
-  // Escape key
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && currentPopup) close();
   });
 
-  // Register globally
   window.atlantisPopups = window.atlantisPopups || {};
   window.atlantisPopups[POPUP_ID] = { show, close, config: CONFIG };
 
@@ -413,19 +514,20 @@ function generateContactPopupJS($objectName, $config, $timestamp) {
 JS;
 }
 
-
 /**
  * 🎬 TEMPLATE SYNOPSIS
  */
 function generateSynopsisPopupJS($objectName, $config, $timestamp) {
-    $title = addslashes($config['title'] ?? 'Titre');
-    $synopsis = addslashes($config['synopsis'] ?? '');
-    $ctaText = addslashes($config['ctaText'] ?? 'En savoir plus');
-    $ctaUrl = addslashes($config['ctaUrl'] ?? '#');
-    $copyrightYear = addslashes($config['copyright']['year'] ?? date('Y'));
-    $copyrightOwner = addslashes($config['copyright']['owner'] ?? '');
+    $title = escapeJS($config['title'] ?? 'Titre');
+    $synopsis = escapeJS($config['synopsis'] ?? '');
+    $ctaText = escapeJS($config['ctaText'] ?? 'En savoir plus');
+    $ctaUrl = escapeJS($config['ctaUrl'] ?? '#');
+    $copyrightYear = escapeJS($config['copyright']['year'] ?? date('Y'));
+    $copyrightOwner = escapeJS($config['copyright']['owner'] ?? '');
+    $copyrightText = escapeJS($config['copyright']['texts'][0] ?? 'Tous droits réservés.');
     $bgColor = $config['colors']['background'] ?? '#1a1a2e';
     $accentColor = $config['colors']['accent'] ?? '#8b5cf6';
+    $textColor = $config['colors']['text'] ?? '#ffffff';
 
     return <<<JS
 /**
@@ -441,8 +543,8 @@ function generateSynopsisPopupJS($objectName, $config, $timestamp) {
     synopsis: "{$synopsis}",
     ctaText: "{$ctaText}",
     ctaUrl: "{$ctaUrl}",
-    copyright: { year: "{$copyrightYear}", owner: "{$copyrightOwner}" },
-    colors: { background: "{$bgColor}", accent: "{$accentColor}" }
+    copyright: { year: "{$copyrightYear}", owner: "{$copyrightOwner}", text: "{$copyrightText}" },
+    colors: { background: "{$bgColor}", accent: "{$accentColor}", text: "{$textColor}" }
   };
 
   let currentPopup = null;
@@ -464,28 +566,29 @@ function generateSynopsisPopupJS($objectName, $config, $timestamp) {
     .popup-{$objectName}-overlay.active .popup-{$objectName} { transform: scale(1); }
     .popup-{$objectName}-header {
       padding: 20px; display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
     }
-    .popup-{$objectName}-title { color: white; font-size: 20px; font-weight: 700; margin: 0; }
+    .popup-{$objectName}-title { color: \${CONFIG.colors.text}; font-size: 20px; font-weight: 700; margin: 0; }
     .popup-{$objectName}-close {
       background: rgba(255,255,255,0.1); border: none;
       width: 36px; height: 36px; border-radius: 50%;
-      color: white; font-size: 20px; cursor: pointer;
+      color: \${CONFIG.colors.text}; font-size: 20px; cursor: pointer;
     }
     .popup-{$objectName}-content { padding: 25px; overflow-y: auto; flex: 1; }
     .popup-{$objectName}-synopsis {
-      color: rgba(255,255,255,0.85); font-size: 15px; line-height: 1.7; margin-bottom: 20px;
+      color: \${CONFIG.colors.text}; opacity: 0.85;
+      font-size: 15px; line-height: 1.7; margin-bottom: 20px; white-space: pre-line;
     }
     .popup-{$objectName}-copyright {
       background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px;
-      font-size: 12px; color: rgba(255,255,255,0.5);
+      font-size: 12px; color: \${CONFIG.colors.text}; opacity: 0.5;
     }
-    .popup-{$objectName}-footer { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); }
+    .popup-{$objectName}-footer { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
     .popup-{$objectName}-cta {
       display: block; width: 100%; padding: 14px; text-align: center;
       background: \${CONFIG.colors.accent}; color: white; text-decoration: none;
       border-radius: 10px; font-weight: 600; font-size: 15px;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.2s, box-shadow 0.2s; border: none; cursor: pointer;
     }
     .popup-{$objectName}-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
   `;
@@ -514,7 +617,8 @@ function generateSynopsisPopupJS($objectName, $config, $timestamp) {
         <div class="popup-{$objectName}-content">
           <p class="popup-{$objectName}-synopsis">\${CONFIG.synopsis}</p>
           <div class="popup-{$objectName}-copyright">
-            © \${CONFIG.copyright.year} \${CONFIG.copyright.owner}. Tous droits réservés.
+            <strong>© \${CONFIG.copyright.year} \${CONFIG.copyright.owner}</strong><br>
+            \${CONFIG.copyright.text}
           </div>
         </div>
         <div class="popup-{$objectName}-footer">
@@ -548,14 +652,16 @@ function generateSynopsisPopupJS($objectName, $config, $timestamp) {
 JS;
 }
 
-
 /**
  * 🌐 TEMPLATE IFRAME
  */
 function generateIframePopupJS($objectName, $config, $timestamp) {
-    $title = addslashes($config['title'] ?? 'Site');
-    $url = addslashes($config['url'] ?? 'about:blank');
+    $title = escapeJS($config['title'] ?? 'Site');
+    $url = escapeJS($config['url'] ?? 'about:blank');
     $icon = $config['icon'] ?? '🌐';
+    $maxWidth = $config['maxWidth'] ?? '1100px';
+    $headerColor = $config['colors']['header'] ?? '#2a2a2a';
+    $bgColor = $config['colors']['background'] ?? '#1a1a1a';
 
     return <<<JS
 /**
@@ -569,7 +675,9 @@ function generateIframePopupJS($objectName, $config, $timestamp) {
   const CONFIG = {
     title: "{$title}",
     url: "{$url}",
-    icon: "{$icon}"
+    icon: "{$icon}",
+    maxWidth: "{$maxWidth}",
+    colors: { header: "{$headerColor}", background: "{$bgColor}" }
   };
 
   let currentPopup = null;
@@ -582,25 +690,25 @@ function generateIframePopupJS($objectName, $config, $timestamp) {
     }
     .popup-{$objectName}-overlay.active { opacity: 1; }
     .popup-{$objectName} {
-      background: #1a1a1a; border-radius: 16px;
-      width: 90%; max-width: 1100px; height: 85vh; overflow: hidden;
+      background: \${CONFIG.colors.background}; border-radius: 16px;
+      width: 90%; max-width: \${CONFIG.maxWidth}; height: 85vh; overflow: hidden;
       box-shadow: 0 30px 70px rgba(0,0,0,0.6);
       transform: scale(0.95); transition: transform 0.3s ease;
       display: flex; flex-direction: column;
     }
     .popup-{$objectName}-overlay.active .popup-{$objectName} { transform: scale(1); }
     .popup-{$objectName}-header {
-      padding: 15px 20px; background: #2a2a2a;
+      padding: 15px 20px; background: \${CONFIG.colors.header};
       display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
     }
-    .popup-{$objectName}-title { color: white; font-size: 16px; display: flex; align-items: center; gap: 10px; margin: 0; }
+    .popup-{$objectName}-title { color: white; font-size: 16px; display: flex; align-items: center; gap: 10px; margin: 0; font-weight: 600; }
     .popup-{$objectName}-close {
       background: rgba(255,255,255,0.1); border: none;
       width: 32px; height: 32px; border-radius: 50%;
       color: white; font-size: 18px; cursor: pointer;
     }
-    .popup-{$objectName}-iframe { flex: 1; border: none; background: white; }
+    .popup-{$objectName}-iframe { flex: 1; border: none; background: white; width: 100%; }
   `;
 
   function injectStyles() {
@@ -621,7 +729,7 @@ function generateIframePopupJS($objectName, $config, $timestamp) {
     overlay.innerHTML = `
       <div class="popup-{$objectName}">
         <div class="popup-{$objectName}-header">
-          <h2 class="popup-{$objectName}-title">\${CONFIG.icon} \${CONFIG.title}</h2>
+          <h2 class="popup-{$objectName}-title"><span>\${CONFIG.icon}</span> \${CONFIG.title}</h2>
           <button class="popup-{$objectName}-close">✕</button>
         </div>
         <iframe src="\${CONFIG.url}" class="popup-{$objectName}-iframe"></iframe>
@@ -655,13 +763,12 @@ function generateIframePopupJS($objectName, $config, $timestamp) {
 JS;
 }
 
-
 /**
  * 🛠️ TEMPLATE CUSTOM
  */
 function generateCustomPopupJS($objectName, $config, $timestamp) {
-    $html = addslashes($config['html'] ?? '<div>Contenu personnalisé</div>');
-    $css = addslashes($config['css'] ?? '');
+    $htmlEncoded = base64_encode($config['html'] ?? '<div>Contenu</div>');
+    $cssEncoded = base64_encode($config['css'] ?? '');
 
     return <<<JS
 /**
@@ -672,28 +779,35 @@ function generateCustomPopupJS($objectName, $config, $timestamp) {
   "use strict";
 
   const POPUP_ID = "{$objectName}";
+  
+  function decode(str) {
+    try { return atob(str); } catch(e) { return ""; }
+  }
+
   const CONFIG = {
-    html: "{$html}",
-    css: "{$css}"
+    html: decode("{$htmlEncoded}"),
+    css: decode("{$cssEncoded}")
   };
 
   let currentPopup = null;
-
-  const STYLES = `
-    .popup-{$objectName}-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      z-index: 99999; display: flex; align-items: center; justify-content: center;
-      opacity: 0; transition: opacity 0.3s ease;
-    }
-    .popup-{$objectName}-overlay.active { opacity: 1; }
-    \${CONFIG.css}
-  `;
 
   function injectStyles() {
     if (!document.getElementById("popup-{$objectName}-styles")) {
       const style = document.createElement("style");
       style.id = "popup-{$objectName}-styles";
-      style.textContent = STYLES;
+      style.textContent = `
+        .popup-{$objectName}-overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+          z-index: 99999; display: flex; align-items: center; justify-content: center;
+          opacity: 0; transition: opacity 0.3s ease;
+        }
+        .popup-{$objectName}-overlay.active { opacity: 1; }
+        .popup-{$objectName}-container {
+          transform: scale(0.95); transition: transform 0.3s ease;
+        }
+        .popup-{$objectName}-overlay.active .popup-{$objectName}-container { transform: scale(1); }
+        \${CONFIG.css}
+      `;
       document.head.appendChild(style);
     }
   }
@@ -704,11 +818,19 @@ function generateCustomPopupJS($objectName, $config, $timestamp) {
 
     const overlay = document.createElement("div");
     overlay.className = "popup-{$objectName}-overlay";
-    overlay.innerHTML = CONFIG.html;
-
+    
+    const container = document.createElement("div");
+    container.className = "popup-{$objectName}-container";
+    container.innerHTML = CONFIG.html;
+    
+    overlay.appendChild(container);
     document.body.appendChild(overlay);
     currentPopup = overlay;
+
     requestAnimationFrame(() => overlay.classList.add("active"));
+
+    const closeBtn = container.querySelector(".custom-close, [data-close], .close-btn");
+    if (closeBtn) closeBtn.addEventListener("click", close);
 
     overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
   }
@@ -730,7 +852,6 @@ function generateCustomPopupJS($objectName, $config, $timestamp) {
 JS;
 }
 
-
 /**
  * 📄 TEMPLATE GÉNÉRIQUE (fallback)
  */
@@ -748,28 +869,20 @@ function generateGenericPopupJS($objectName, $templateType, $config, $timestamp)
   const POPUP_ID = "{$objectName}";
   const CONFIG = {$configJson};
 
-  let currentPopup = null;
-
   function show() {
-    console.log("Popup {$objectName} show - config:", CONFIG);
-    alert("Popup type '{$templateType}' pas encore implémenté");
+    console.log("Popup {$objectName} - config:", CONFIG);
+    alert("Template '{$templateType}' non implémenté");
   }
 
-  function close() {
-    if (currentPopup) {
-      currentPopup.remove();
-      currentPopup = null;
-    }
-  }
+  function close() {}
 
   window.atlantisPopups = window.atlantisPopups || {};
   window.atlantisPopups[POPUP_ID] = { show, close, config: CONFIG };
 
-  console.log("📄 Popup {$objectName} chargé (générique)");
+  console.log("📄 Popup {$objectName} chargé");
 })();
 JS;
 }
-
 
 /**
  * 📋 MISE À JOUR DU MANIFEST

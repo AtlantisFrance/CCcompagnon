@@ -1,0 +1,18 @@
+# CORS pour les popups Atlantis City
+
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+</IfModule>
+
+# Types MIME corrects
+
+<IfModule mod_mime.c>
+    AddType application/javascript .js
+    AddType application/json .json
+</IfModule>
+
+# Désactiver le listing
+
+Options -Indexes

@@ -8,7 +8,7 @@
  * - VIEWER : Popup épurée, juste le contenu HTML du client
  * - ADMIN : Popup complète avec header, badges, toolbar
  *
- * v3.0 - Rendu NATIF (plus d'iframe sauf pour template iframe/youtube)
+ * v3.2 - Utilisation de srcdoc (fix sandbox security)
  */
 
 (function () {
@@ -153,21 +153,60 @@
   let contentsLoaded = false;
 
   // ============================================
-  // 🖼️ RENDU NATIF (Direct DOM)
+  // 🛠️ HELPERS
+  // ============================================
+
+  /**
+   * Échappe le HTML pour l'attribut srcdoc
+   * Double-escape pour les guillemets dans l'attribut HTML
+   */
+  function escapeSrcdoc(html) {
+    if (!html) return "";
+    return html.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  }
+
+  // ============================================
+  // 🖼️ RENDU NATIF / IFRAME
   // ============================================
 
   /**
    * Détermine si le contenu nécessite un iframe
-   * (templates iframe et youtube seulement)
+   * - Templates iframe/youtube explicites
+   * - Documents HTML complets (<!DOCTYPE ou <html)
+   *
+   * @param {string} templateType - Type de template
+   * @param {string} html - Contenu HTML (optionnel)
+   * @returns {boolean}
    */
-  function needsIframe(templateType) {
-    return templateType === "iframe" || templateType === "youtube";
+  function needsIframe(templateType, html = "") {
+    // Templates explicitement iframe
+    if (templateType === "iframe" || templateType === "youtube") {
+      return true;
+    }
+
+    // Documents HTML complets → iframe obligatoire
+    // (sinon les styles dans <head> sont ignorés)
+    if (html) {
+      const trimmed = html.trim().toLowerCase();
+      if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
-   * Génère le HTML pour un iframe (utilisé pour templates iframe/youtube)
+   * Génère le HTML complet pour un iframe (wrapper si nécessaire)
    */
   function generateIframeContent(html) {
+    // Si c'est déjà un document complet, l'utiliser tel quel
+    const trimmed = html.trim().toLowerCase();
+    if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
+      return html;
+    }
+
+    // Sinon wrapper dans un document
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -197,22 +236,21 @@
   }
 
   /**
-   * Injecte le contenu dans un iframe
+   * Crée un iframe avec srcdoc (pas besoin de allow-same-origin)
    */
-  function injectContentIntoIframe(iframeId, html) {
-    const iframe = document.getElementById(iframeId);
-    if (!iframe) return;
-
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (iframeDoc) {
-      iframeDoc.open();
-      iframeDoc.write(generateIframeContent(html));
-      iframeDoc.close();
-    }
+  function createIframeWithSrcdoc(html, id = "popup-content-iframe") {
+    const fullContent = generateIframeContent(html);
+    return `<iframe 
+      id="${id}" 
+      class="popup-content-iframe"
+      srcdoc="${escapeSrcdoc(fullContent)}"
+      sandbox="allow-scripts allow-popups allow-forms"
+      frameborder="0"
+    ></iframe>`;
   }
 
   /**
-   * Rendu du contenu - Natif ou Iframe selon le template
+   * Rendu du contenu - Natif ou Iframe selon le template et le contenu
    */
   function renderContent(
     objectConfig,
@@ -228,22 +266,11 @@
       return;
     }
 
-    if (needsIframe(templateType)) {
-      // Templates iframe/youtube → utiliser iframe
-      container.innerHTML = `
-        <iframe 
-          id="popup-content-iframe" 
-          class="popup-content-iframe"
-          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-          frameborder="0"
-        ></iframe>
-      `;
-      setTimeout(
-        () => injectContentIntoIframe("popup-content-iframe", html),
-        50
-      );
+    if (needsIframe(templateType, html)) {
+      // Utiliser iframe avec srcdoc
+      container.innerHTML = createIframeWithSrcdoc(html);
     } else {
-      // Tous les autres templates → rendu natif direct
+      // Rendu natif direct
       container.innerHTML = `<div class="popup-native-content">${html}</div>`;
     }
   }
@@ -390,7 +417,7 @@
   // ============================================
 
   /**
-   * Popup VIEWER : Contenu seul, RENDU NATIF (sauf iframe/youtube)
+   * Popup VIEWER : Contenu seul
    */
   function createViewerPopupHTML(objectConfig) {
     const hasContent = objectConfig.content?.hasContent;
@@ -399,29 +426,21 @@
       return `<div class="popup-viewer-overlay-clean"></div>`;
     }
 
+    const html = objectConfig.content?.html || "";
     const templateType = objectConfig.content?.templateType;
-    const useIframe = needsIframe(templateType);
+    const useIframe = needsIframe(templateType, html);
 
     // Format class pour le sizing
     const formatClass = `format-${objectConfig.format}`;
 
     return `
       <div class="popup-viewer-overlay-clean">
-        <button class="popup-viewer-close-floating" onclick="window.atlantisPopup.close()">✕</button>
         <div class="popup-viewer-canvas ${formatClass}" id="popup-content-container">
+          <button class="popup-viewer-close-btn" onclick="window.atlantisPopup.close()" title="Fermer">✕</button>
           ${
             useIframe
-              ? `
-            <iframe 
-              id="popup-content-iframe" 
-              class="popup-content-iframe"
-              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-              frameborder="0"
-            ></iframe>
-          `
-              : `
-            <div class="popup-native-content">${objectConfig.content.html}</div>
-          `
+              ? createIframeWithSrcdoc(html)
+              : `<div class="popup-native-content">${html}</div>`
           }
         </div>
       </div>
@@ -429,14 +448,15 @@
   }
 
   /**
-   * Vue principale Admin - RENDU NATIF dans le preview
+   * Vue principale Admin
    */
   function renderAdminMainView(objectConfig) {
     const hasContent = objectConfig.content?.hasContent;
 
     if (hasContent) {
+      const html = objectConfig.content?.html || "";
       const templateType = objectConfig.content?.templateType;
-      const useIframe = needsIframe(templateType);
+      const useIframe = needsIframe(templateType, html);
 
       return `
         <div class="popup-admin-preview">
@@ -444,17 +464,8 @@
           <div class="popup-admin-preview-frame" id="popup-content-container">
             ${
               useIframe
-                ? `
-              <iframe 
-                id="popup-content-iframe" 
-                class="popup-content-iframe"
-                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                frameborder="0"
-              ></iframe>
-            `
-                : `
-              <div class="popup-native-content">${objectConfig.content.html}</div>
-            `
+                ? createIframeWithSrcdoc(html)
+                : `<div class="popup-native-content">${html}</div>`
             }
           </div>
         </div>
@@ -554,17 +565,6 @@
     if (viewName === "main") {
       container.innerHTML = renderAdminMainView(objectConfig);
 
-      // Injecter le contenu iframe si nécessaire
-      const templateType = objectConfig.content?.templateType;
-      if (needsIframe(templateType) && objectConfig.content?.html) {
-        setTimeout(() => {
-          injectContentIntoIframe(
-            "popup-content-iframe",
-            objectConfig.content.html
-          );
-        }, 50);
-      }
-
       if (titleText) titleText.textContent = objectConfig.title;
       footer.innerHTML = `<button class="popup-viewer-btn popup-viewer-btn-close" onclick="window.atlantisPopup.close()">Fermer</button>`;
       if (adminZone) adminZone.style.display = "";
@@ -659,17 +659,6 @@
     currentPopup = overlay;
     currentObjectName = objectName;
 
-    // Injecter le contenu iframe si nécessaire (pour templates iframe/youtube)
-    const templateType = objectConfig.content?.templateType;
-    if (needsIframe(templateType) && objectConfig.content?.html) {
-      setTimeout(() => {
-        injectContentIntoIframe(
-          "popup-content-iframe",
-          objectConfig.content.html
-        );
-      }, 100);
-    }
-
     console.log(
       `👁️ Popup: Ouverte pour ${objectName} (mode: ${
         isAdminMode ? "admin" : "viewer"
@@ -745,7 +734,7 @@
   viewer.onSceneLoadComplete(async () => {
     await loadContentsFromAPI();
     registerClickHandlers();
-    console.log("👁️ Popup Viewer: ✅ Prêt (rendu natif v3.0)");
+    console.log("👁️ Popup Viewer: ✅ Prêt (v3.2 - srcdoc, secure sandbox)");
   });
 
   // ============================================

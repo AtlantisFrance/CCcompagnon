@@ -1,41 +1,42 @@
 <?php
 /**
  * ============================================
- * 📖 RÉCUPÉRATION POPUP CONTENT
+ * 📥 API POPUPS - GET
+ * Récupère un template popup existant
+ * 
+ * GET /api/popups/get.php?space_slug=X&object_name=Y
  * ============================================
- * 
- * Endpoint: GET /api/popups/get.php
- * 
- * Params:
- *   - space_slug: slug de l'espace
- *   - object_name: nom de l'objet 3D
- * 
- * Retourne le contenu HTML + info template si disponible
  */
 
+define('ATLANTIS_API', true);
 require_once __DIR__ . '/../config/init.php';
 
-// Vérifier la méthode
+// CORS
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Content-Type: application/json; charset=utf-8");
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     errorResponse('Méthode non autorisée', 405);
 }
 
-// Validation des paramètres
-if (empty($_GET['space_slug'])) {
-    errorResponse('Paramètre space_slug requis', 400);
-}
-
-if (empty($_GET['object_name'])) {
-    errorResponse('Paramètre object_name requis', 400);
-}
-
-$spaceSlug = trim($_GET['space_slug']);
-$objectName = trim($_GET['object_name']);
-
 try {
+    $spaceSlug = isset($_GET['space_slug']) ? trim($_GET['space_slug']) : null;
+    $objectName = isset($_GET['object_name']) ? trim($_GET['object_name']) : null;
+
+    if (!$spaceSlug || !$objectName) {
+        errorResponse('space_slug et object_name requis', 400);
+    }
+
     $db = getDB();
 
-    // Récupérer l'espace
+    // Récupérer le space_id
     $stmt = $db->prepare("SELECT id FROM spaces WHERE slug = :slug");
     $stmt->execute([':slug' => $spaceSlug]);
     $space = $stmt->fetch();
@@ -44,63 +45,56 @@ try {
         errorResponse('Espace non trouvé', 404);
     }
 
-    // Récupérer le popup content avec info template
+    // Récupérer le template
     $stmt = $db->prepare("
-        SELECT 
-            pc.id,
-            pc.object_name,
-            pc.template_type,
-            pc.template_config,
-            pc.html_content,
-            pc.created_at,
-            pc.updated_at,
-            u.first_name as updated_by_first_name,
-            u.last_name as updated_by_last_name
+        SELECT pc.*, 
+               z.slug as zone_slug, 
+               z.name as zone_name,
+               u.first_name as updated_by_first_name,
+               u.last_name as updated_by_last_name
         FROM popup_contents pc
+        LEFT JOIN zones z ON z.id = pc.zone_id
         LEFT JOIN users u ON u.id = pc.updated_by
-        WHERE pc.space_id = :space_id AND pc.object_name = :object_name
+        WHERE pc.space_id = :space_id 
+        AND pc.object_name = :object_name
+        AND pc.is_active = 1
     ");
     $stmt->execute([
         ':space_id' => $space['id'],
         ':object_name' => $objectName
     ]);
-    $popup = $stmt->fetch();
+    $template = $stmt->fetch();
 
-    if (!$popup) {
-        // Pas de contenu = retourner un objet vide mais succès
+    if (!$template) {
+        // Pas de template existant - retourner un objet vide
         successResponse([
-            'popup' => null,
-            'exists' => false
-        ], 'Aucun contenu pour cet objet');
+            'exists' => false,
+            'template' => null,
+            'message' => 'Aucun template trouvé pour cet objet'
+        ]);
     }
 
-    // Décoder le template_config si présent
-    $templateConfig = null;
-    if ($popup['template_config']) {
-        $templateConfig = json_decode($popup['template_config'], true);
-    }
-
-    // Préparer la réponse
-    $response = [
-        'popup' => [
-            'id' => (int)$popup['id'],
-            'object_name' => $popup['object_name'],
-            'template_type' => $popup['template_type'],
-            'template_config' => $templateConfig,
-            'html_content' => $popup['html_content'],
-            'updated_by' => $popup['updated_by_first_name'] 
-                ? $popup['updated_by_first_name'] . ' ' . $popup['updated_by_last_name']
-                : null,
-            'created_at' => $popup['created_at'],
-            'updated_at' => $popup['updated_at']
-        ],
+    successResponse([
         'exists' => true,
-        'has_template' => !empty($popup['template_type'])
-    ];
+        'template' => [
+            'id' => (int)$template['id'],
+            'object_name' => $template['object_name'],
+            'template_type' => $template['template_type'],
+            'template_config' => $template['template_config'],
+            'shader_name' => $template['shader_name'],
+            'format' => $template['format'],
+            'zone_slug' => $template['zone_slug'],
+            'zone_name' => $template['zone_name'],
+            'is_active' => (bool)$template['is_active'],
+            'created_at' => $template['created_at'],
+            'updated_at' => $template['updated_at'],
+            'updated_by' => $template['updated_by_first_name'] 
+                ? $template['updated_by_first_name'] . ' ' . $template['updated_by_last_name'] 
+                : null
+        ]
+    ]);
 
-    successResponse($response);
-
-} catch (PDOException $e) {
+} catch (Exception $e) {
     error_log("Erreur popups/get: " . $e->getMessage());
-    errorResponse('Erreur serveur', 500);
+    errorResponse('Erreur serveur: ' . $e->getMessage(), 500);
 }

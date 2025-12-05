@@ -169,9 +169,21 @@ try {
                     $hasAccess = true;
                     break;
                 }
-                if ($role['role'] === 'zone_admin' && $role['zone_slug'] === $zoneSlug) {
-                    $hasAccess = true;
-                    break;
+                if ($role['role'] === 'zone_admin') {
+                    // Comparaison flexible du zone_slug
+                    // Le frontend peut envoyer "zone1" ou "scenetest-zone1"
+                    // La BDD contient "scenetest-zone1"
+                    $dbZoneSlug = $role['zone_slug'] ?? '';
+                    $zoneMatches = (
+                        $dbZoneSlug === $zoneSlug ||                              // Match exact
+                        $dbZoneSlug === $spaceSlug . '-' . $zoneSlug ||           // Frontend envoie "zone1", BDD a "scenetest-zone1"
+                        $zoneSlug === $spaceSlug . '-' . $dbZoneSlug ||           // Inverse
+                        str_ends_with($dbZoneSlug, '-' . $zoneSlug)               // BDD se termine par "-zone1"
+                    );
+                    if ($zoneMatches) {
+                        $hasAccess = true;
+                        break;
+                    }
                 }
             }
         }

@@ -170,15 +170,12 @@ try {
                     break;
                 }
                 if ($role['role'] === 'zone_admin') {
-                    // Comparaison flexible du zone_slug
-                    // Le frontend peut envoyer "zone1" ou "scenetest-zone1"
-                    // La BDD contient "scenetest-zone1"
                     $dbZoneSlug = $role['zone_slug'] ?? '';
                     $zoneMatches = (
-                        $dbZoneSlug === $zoneSlug ||                              // Match exact
-                        $dbZoneSlug === $spaceSlug . '-' . $zoneSlug ||           // Frontend envoie "zone1", BDD a "scenetest-zone1"
-                        $zoneSlug === $spaceSlug . '-' . $dbZoneSlug ||           // Inverse
-                        str_ends_with($dbZoneSlug, '-' . $zoneSlug)               // BDD se termine par "-zone1"
+                        $dbZoneSlug === $zoneSlug ||
+                        $dbZoneSlug === $spaceSlug . '-' . $zoneSlug ||
+                        $zoneSlug === $spaceSlug . '-' . $dbZoneSlug ||
+                        str_ends_with($dbZoneSlug, '-' . $zoneSlug)
                     );
                     if ($zoneMatches) {
                         $hasAccess = true;
@@ -322,9 +319,8 @@ try {
     echo json_encode(['success' => false, 'error' => 'Erreur serveur: ' . $e->getMessage()]);
 }
 
-
 // ============================================
-// 🔧 FONCTIONS DE GÉNÉRATION JS
+// 🔧 FONCTIONS DE GÉNÉRATION
 // ============================================
 
 function generatePopupJS($objectName, $templateType, $config, $spaceSlug) {
@@ -354,174 +350,119 @@ function escapeJS($str) {
 }
 
 /**
- * 📇 TEMPLATE CONTACT
+ * 📇 TEMPLATE CONTACT - DESIGN POPUP STUDIO v2
  */
 function generateContactPopupJS($objectName, $config, $timestamp) {
     $name = escapeJS($config['name'] ?? 'Contact');
     $title = escapeJS($config['title'] ?? '');
-    $avatar = escapeJS($config['avatar'] ?? 'AB');
-    $bgColor = $config['colors']['background'] ?? '#1a1a2e';
-    $accentColor = $config['colors']['accent'] ?? '#3b82f6';
-    $textColor = $config['colors']['text'] ?? '#ffffff';
-    $contactsJS = json_encode($config['contacts'] ?? [], JSON_UNESCAPED_UNICODE);
+    $initials = escapeJS($config['initials'] ?? 'AB');
+    $avatarUrl = escapeJS($config['avatarUrl'] ?? '');
+    
+    $hue = isset($config['theme']['hue']) ? intval($config['theme']['hue']) : 260;
+    $glow = isset($config['theme']['glow']) ? intval($config['theme']['glow']) : 20;
+    
+    $contacts = $config['contacts'] ?? [];
+    foreach ($contacts as &$c) {
+        if ($c['type'] === 'phone' && empty($c['href'])) {
+            $c['href'] = 'tel:' . preg_replace('/\s+/', '', $c['value'] ?? '');
+        } elseif ($c['type'] === 'email' && empty($c['href'])) {
+            $c['href'] = 'mailto:' . trim($c['value'] ?? '');
+        }
+    }
+    $contactsJS = json_encode($contacts, JSON_UNESCAPED_UNICODE);
 
     return <<<JS
 /**
  * 📇 Popup Contact - {$objectName}
- * Généré automatiquement le {$timestamp}
- * ⚠️ Ne pas modifier directement - Utiliser l'éditeur admin
+ * Design Popup Studio v2
+ * Généré le {$timestamp}
  */
-(function() {
-  "use strict";
+(function(){
+"use strict";
 
-  const POPUP_ID = "{$objectName}";
-  const CONFIG = {
-    name: "{$name}",
-    title: "{$title}",
-    avatar: "{$avatar}",
-    contacts: {$contactsJS},
-    colors: {
-      background: "{$bgColor}",
-      accent: "{$accentColor}",
-      text: "{$textColor}"
-    }
-  };
+const POPUP_ID = "{$objectName}";
+const CFG = {
+  name: "{$name}",
+  title: "{$title}",
+  initials: "{$initials}",
+  avatarUrl: "{$avatarUrl}",
+  hue: {$hue},
+  glow: {$glow},
+  contacts: {$contactsJS}
+};
 
-  let currentPopup = null;
+const ICONS = {
+  youtube: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/YouTube_full-color_icon_%282017%29.svg/1024px-YouTube_full-color_icon_%282017%29.svg.png",
+  facebook: "https://aavyuxeirkpgtbarjdce.supabase.co/storage/v1/object/public/julienscript/testree/facebook.png",
+  instagram: "https://aavyuxeirkpgtbarjdce.supabase.co/storage/v1/object/public/julienscript/testree/instagram.png",
+  linkedin: "https://aavyuxeirkpgtbarjdce.supabase.co/storage/v1/object/public/julienscript/testree/linkedin.png",
+  tiktok: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/34/Ionicons_logo-tiktok.svg/512px-Ionicons_logo-tiktok.svg.png",
+  twitter: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Logo_of_Twitter.svg/512px-Logo_of_Twitter.svg.png"
+};
+const EMOJI = {phone:"📱",email:"✉️",youtube:"▶️",facebook:"📘",instagram:"📷",linkedin:"💼",tiktok:"🎵",twitter:"🐦",website:"🌐",other:"🔗"};
 
-  const STYLES = `
-    .popup-{$objectName}-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      z-index: 99999; display: flex; align-items: center; justify-content: center;
-      opacity: 0; transition: opacity 0.3s ease;
-    }
-    .popup-{$objectName}-overlay.active { opacity: 1; }
-    .popup-{$objectName} {
-      background: \${CONFIG.colors.background}; border-radius: 20px;
-      width: 380px; max-width: 95vw; overflow: hidden;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.5);
-      transform: scale(0.95); transition: transform 0.3s ease;
-    }
-    .popup-{$objectName}-overlay.active .popup-{$objectName} { transform: scale(1); }
-    .popup-{$objectName}-header {
-      padding: 25px 20px; text-align: center; position: relative;
-      background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%);
-    }
-    .popup-{$objectName}-close {
-      position: absolute; top: 15px; right: 15px;
-      background: rgba(255,255,255,0.1); border: none;
-      width: 32px; height: 32px; border-radius: 50%;
-      color: \${CONFIG.colors.text}; font-size: 18px; cursor: pointer;
-      transition: all 0.2s;
-    }
-    .popup-{$objectName}-close:hover { background: rgba(239,68,68,0.3); }
-    .popup-{$objectName}-avatar {
-      width: 70px; height: 70px; background: \${CONFIG.colors.accent};
-      border-radius: 50%; margin: 0 auto 15px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 700; color: white;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-    }
-    .popup-{$objectName}-name {
-      color: \${CONFIG.colors.text}; font-size: 22px; font-weight: 700; margin: 0 0 5px;
-    }
-    .popup-{$objectName}-title {
-      color: \${CONFIG.colors.text}; opacity: 0.6; font-size: 14px; margin: 0;
-    }
-    .popup-{$objectName}-links { padding: 10px 20px 25px; }
-    .popup-{$objectName}-link {
-      display: flex; align-items: center; gap: 15px;
-      padding: 14px 16px; background: rgba(255,255,255,0.05);
-      border-radius: 12px; margin-bottom: 10px;
-      text-decoration: none; color: \${CONFIG.colors.text};
-      transition: all 0.2s; border: 1px solid transparent;
-    }
-    .popup-{$objectName}-link:hover {
-      background: rgba(255,255,255,0.1);
-      border-color: \${CONFIG.colors.accent};
-      transform: translateX(5px);
-    }
-    .popup-{$objectName}-link-icon { font-size: 20px; }
-    .popup-{$objectName}-link-text { flex: 1; }
-    .popup-{$objectName}-link-label { font-size: 11px; opacity: 0.5; text-transform: uppercase; }
-    .popup-{$objectName}-link-value { font-size: 14px; font-weight: 500; }
-    .popup-{$objectName}-link-arrow { opacity: 0.3; font-size: 18px; }
-  `;
+let currentPopup = null;
 
-  function injectStyles() {
-    if (!document.getElementById("popup-{$objectName}-styles")) {
-      const style = document.createElement("style");
-      style.id = "popup-{$objectName}-styles";
-      style.textContent = STYLES;
-      document.head.appendChild(style);
-    }
+function injectFont() {
+  if (!document.getElementById("outfit-font")) {
+    const l = document.createElement("link");
+    l.id = "outfit-font";
+    l.rel = "stylesheet";
+    l.href = "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap";
+    document.head.appendChild(l);
   }
+}
 
-  function getIcon(type) {
-    const icons = {
-      phone: "📱", email: "✉️", website: "🌐",
-      facebook: "📘", instagram: "📷", linkedin: "💼",
-      twitter: "🐦", youtube: "▶️", tiktok: "🎵"
-    };
-    return icons[type] || "📌";
-  }
+function show() {
+  if (currentPopup) { close(); return; }
+  injectFont();
 
-  function show() {
-    if (currentPopup) { close(); return; }
-    injectStyles();
+  const overlay = document.createElement("div");
+  overlay.className = "popup-{$objectName}-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;font-family:'Outfit',sans-serif;";
 
-    const overlay = document.createElement("div");
-    overlay.className = "popup-{$objectName}-overlay";
+  const avatar = CFG.avatarUrl 
+    ? '<img src="' + CFG.avatarUrl + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+    : CFG.initials;
 
-    const linksHTML = CONFIG.contacts.map(c => `
-      <a href="\${c.href}" class="popup-{$objectName}-link" 
-         target="\${c.type === 'phone' || c.type === 'email' ? '_self' : '_blank'}"
-         rel="noopener noreferrer">
-        <span class="popup-{$objectName}-link-icon">\${c.icon || getIcon(c.type)}</span>
-        <div class="popup-{$objectName}-link-text">
-          <div class="popup-{$objectName}-link-label">\${c.label || c.type}</div>
-          <div class="popup-{$objectName}-link-value">\${c.value}</div>
-        </div>
-        <span class="popup-{$objectName}-link-arrow">→</span>
-      </a>
-    `).join("");
+  const links = CFG.contacts.map(function(c) {
+    const iconUrl = ICONS[c.type];
+    const icon = iconUrl 
+      ? '<img src="' + iconUrl + '" style="width:24px;height:24px;object-fit:contain;">'
+      : '<span style="font-size:20px;">' + (EMOJI[c.type] || "🔗") + '</span>';
+    const target = (c.type === "phone" || c.type === "email") ? "_self" : "_blank";
+    return '<a href="' + (c.href || "#") + '" target="' + target + '" rel="noopener" style="display:flex;align-items:center;gap:16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:14px 16px;text-decoration:none;color:white;transition:all 0.3s;" onmouseover="this.style.background=\\'hsla(' + CFG.hue + ',60%,50%,0.15)\\';this.style.borderColor=\\'hsla(' + CFG.hue + ',60%,60%,0.4)\\';this.style.transform=\\'translateY(-2px)\\'" onmouseout="this.style.background=\\'rgba(255,255,255,0.03)\\';this.style.borderColor=\\'rgba(255,255,255,0.08)\\';this.style.transform=\\'none\\'"><div style="width:44px;height:44px;border-radius:12px;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + icon + '</div><div style="flex:1;"><div style="font-size:11px;text-transform:uppercase;color:rgba(255,255,255,0.5);font-weight:600;margin-bottom:3px;letter-spacing:0.5px;">' + (c.label || c.type) + '</div><div style="font-size:14px;font-weight:500;color:rgba(255,255,255,0.95);">' + (c.value || "") + '</div></div><span style="opacity:0.3;font-size:16px;">→</span></a>';
+  }).join("");
 
-    overlay.innerHTML = `
-      <div class="popup-{$objectName}">
-        <div class="popup-{$objectName}-header">
-          <button class="popup-{$objectName}-close">✕</button>
-          <div class="popup-{$objectName}-avatar">\${CONFIG.avatar}</div>
-          <h2 class="popup-{$objectName}-name">\${CONFIG.name}</h2>
-          <p class="popup-{$objectName}-title">\${CONFIG.title}</p>
-        </div>
-        <div class="popup-{$objectName}-links">\${linksHTML}</div>
-      </div>
-    `;
+  overlay.innerHTML = '<div class="popup-{$objectName}" style="width:380px;max-width:92vw;background:linear-gradient(160deg,hsl(' + CFG.hue + ',30%,15%) 0%,hsl(' + CFG.hue + ',40%,5%) 100%);border-radius:24px;border:1px solid hsla(' + CFG.hue + ',70%,70%,0.2);box-shadow:0 25px 60px rgba(0,0,0,0.6),0 0 ' + CFG.glow + 'px hsla(' + CFG.hue + ',80%,60%,0.5);overflow:hidden;color:white;transform:scale(0.95);transition:transform 0.3s;"><div class="popup-{$objectName}-header" style="position:relative;padding:40px 20px 28px;text-align:center;background:linear-gradient(to bottom,rgba(255,255,255,0.04),transparent);border-bottom:1px solid hsla(' + CFG.hue + ',50%,50%,0.15);"><button class="popup-{$objectName}-close" onclick="window.atlantisPopups[\\'{$objectName}\\'].close()" style="position:absolute;top:15px;right:15px;width:32px;height:32px;background:rgba(255,255,255,0.08);border:none;border-radius:50%;color:rgba(255,255,255,0.6);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button><div class="popup-{$objectName}-avatar" style="width:88px;height:88px;margin:0 auto 16px;border-radius:50%;background:linear-gradient(135deg,hsl(' + CFG.hue + ',50%,25%),hsl(' + CFG.hue + ',60%,15%));display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:600;border:3px solid hsla(' + CFG.hue + ',70%,60%,0.5);box-shadow:0 8px 25px rgba(0,0,0,0.4);overflow:hidden;">' + avatar + '</div><h2 class="popup-{$objectName}-name" style="font-size:24px;font-weight:700;margin:0 0 6px;text-shadow:0 2px 8px rgba(0,0,0,0.4);">' + CFG.name + '</h2><p class="popup-{$objectName}-title" style="font-size:12px;color:hsla(' + CFG.hue + ',30%,75%,0.8);font-weight:400;letter-spacing:1.5px;text-transform:uppercase;margin:0;">' + CFG.title + '</p></div><div class="popup-{$objectName}-links" style="padding:24px 20px;display:flex;flex-direction:column;gap:12px;">' + links + '</div></div>';
 
-    document.body.appendChild(overlay);
-    currentPopup = overlay;
+  document.body.appendChild(overlay);
+  currentPopup = overlay;
 
-    requestAnimationFrame(() => overlay.classList.add("active"));
-
-    overlay.querySelector(".popup-{$objectName}-close").addEventListener("click", close);
-    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
-  }
-
-  function close() {
-    if (currentPopup) {
-      currentPopup.classList.remove("active");
-      setTimeout(() => { currentPopup?.remove(); currentPopup = null; }, 300);
-    }
-  }
-
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && currentPopup) close();
+  requestAnimationFrame(function() {
+    overlay.style.opacity = "1";
+    var popup = overlay.querySelector(".popup-{$objectName}");
+    if (popup) popup.style.transform = "scale(1)";
   });
 
-  window.atlantisPopups = window.atlantisPopups || {};
-  window.atlantisPopups[POPUP_ID] = { show, close, config: CONFIG };
+  overlay.addEventListener("click", function(e) { if (e.target === overlay) close(); });
+}
 
-  console.log("📇 Popup {$objectName} chargé");
+function close() {
+  if (currentPopup) {
+    currentPopup.style.opacity = "0";
+    var popup = currentPopup.querySelector(".popup-{$objectName}");
+    if (popup) popup.style.transform = "scale(0.95)";
+    setTimeout(function() { if(currentPopup) { currentPopup.remove(); currentPopup = null; } }, 300);
+  }
+}
+
+document.addEventListener("keydown", function(e) { if (e.key === "Escape" && currentPopup) close(); });
+
+window.atlantisPopups = window.atlantisPopups || {};
+window.atlantisPopups[POPUP_ID] = { show: show, close: close, config: CFG };
+
+console.log("📇 Popup " + POPUP_ID + " chargé");
 })();
 JS;
 }
@@ -561,105 +502,43 @@ function generateSynopsisPopupJS($objectName, $config, $timestamp) {
 
   let currentPopup = null;
 
-  const STYLES = `
-    .popup-{$objectName}-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.9);
-      z-index: 99999; display: flex; align-items: center; justify-content: center;
-      opacity: 0; transition: opacity 0.3s ease;
-    }
-    .popup-{$objectName}-overlay.active { opacity: 1; }
-    .popup-{$objectName} {
-      background: \${CONFIG.colors.background}; border-radius: 20px;
-      width: 500px; max-width: 95vw; max-height: 85vh; overflow: hidden;
-      box-shadow: 0 30px 70px rgba(0,0,0,0.5);
-      transform: scale(0.95); transition: transform 0.3s ease;
-      display: flex; flex-direction: column;
-    }
-    .popup-{$objectName}-overlay.active .popup-{$objectName} { transform: scale(1); }
-    .popup-{$objectName}-header {
-      padding: 20px; display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
-    }
-    .popup-{$objectName}-title { color: \${CONFIG.colors.text}; font-size: 20px; font-weight: 700; margin: 0; }
-    .popup-{$objectName}-close {
-      background: rgba(255,255,255,0.1); border: none;
-      width: 36px; height: 36px; border-radius: 50%;
-      color: \${CONFIG.colors.text}; font-size: 20px; cursor: pointer;
-    }
-    .popup-{$objectName}-content { padding: 25px; overflow-y: auto; flex: 1; }
-    .popup-{$objectName}-synopsis {
-      color: \${CONFIG.colors.text}; opacity: 0.85;
-      font-size: 15px; line-height: 1.7; margin-bottom: 20px; white-space: pre-line;
-    }
-    .popup-{$objectName}-copyright {
-      background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px;
-      font-size: 12px; color: \${CONFIG.colors.text}; opacity: 0.5;
-    }
-    .popup-{$objectName}-footer { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
-    .popup-{$objectName}-cta {
-      display: block; width: 100%; padding: 14px; text-align: center;
-      background: \${CONFIG.colors.accent}; color: white; text-decoration: none;
-      border-radius: 10px; font-weight: 600; font-size: 15px;
-      transition: transform 0.2s, box-shadow 0.2s; border: none; cursor: pointer;
-    }
-    .popup-{$objectName}-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
-  `;
-
   function injectStyles() {
-    if (!document.getElementById("popup-{$objectName}-styles")) {
-      const style = document.createElement("style");
-      style.id = "popup-{$objectName}-styles";
-      style.textContent = STYLES;
-      document.head.appendChild(style);
-    }
+    if (document.getElementById("popup-{$objectName}-styles")) return;
+    var style = document.createElement("style");
+    style.id = "popup-{$objectName}-styles";
+    style.textContent = ".popup-{$objectName}-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s}.popup-{$objectName}-overlay.active{opacity:1}.popup-{$objectName}{background:" + CONFIG.colors.background + ";border-radius:20px;width:500px;max-width:95vw;max-height:85vh;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.5);transform:scale(0.95);transition:transform 0.3s;display:flex;flex-direction:column}.popup-{$objectName}-overlay.active .popup-{$objectName}{transform:scale(1)}.popup-{$objectName}-header{padding:20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1)}.popup-{$objectName}-title{color:" + CONFIG.colors.text + ";font-size:20px;font-weight:700;margin:0}.popup-{$objectName}-close{background:rgba(255,255,255,0.1);border:none;width:36px;height:36px;border-radius:50%;color:" + CONFIG.colors.text + ";font-size:20px;cursor:pointer}.popup-{$objectName}-content{padding:25px;overflow-y:auto;flex:1}.popup-{$objectName}-synopsis{color:" + CONFIG.colors.text + ";opacity:0.85;font-size:15px;line-height:1.7;margin-bottom:20px;white-space:pre-line}.popup-{$objectName}-copyright{background:rgba(255,255,255,0.05);border-radius:10px;padding:15px;font-size:12px;color:" + CONFIG.colors.text + ";opacity:0.5}.popup-{$objectName}-footer{padding:20px;border-top:1px solid rgba(255,255,255,0.1)}.popup-{$objectName}-cta{display:block;width:100%;padding:14px;text-align:center;background:" + CONFIG.colors.accent + ";color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;transition:transform 0.2s,box-shadow 0.2s;border:none;cursor:pointer;box-sizing:border-box}.popup-{$objectName}-cta:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,0.3)}";
+    document.head.appendChild(style);
   }
 
   function show() {
     if (currentPopup) { close(); return; }
     injectStyles();
 
-    const overlay = document.createElement("div");
+    var overlay = document.createElement("div");
     overlay.className = "popup-{$objectName}-overlay";
-    overlay.innerHTML = `
-      <div class="popup-{$objectName}">
-        <div class="popup-{$objectName}-header">
-          <h2 class="popup-{$objectName}-title">\${CONFIG.title}</h2>
-          <button class="popup-{$objectName}-close">✕</button>
-        </div>
-        <div class="popup-{$objectName}-content">
-          <p class="popup-{$objectName}-synopsis">\${CONFIG.synopsis}</p>
-          <div class="popup-{$objectName}-copyright">
-            <strong>© \${CONFIG.copyright.year} \${CONFIG.copyright.owner}</strong><br>
-            \${CONFIG.copyright.text}
-          </div>
-        </div>
-        <div class="popup-{$objectName}-footer">
-          <a href="\${CONFIG.ctaUrl}" class="popup-{$objectName}-cta" target="_blank">\${CONFIG.ctaText}</a>
-        </div>
-      </div>
-    `;
+    overlay.innerHTML = '<div class="popup-{$objectName}"><div class="popup-{$objectName}-header"><h2 class="popup-{$objectName}-title">' + CONFIG.title + '</h2><button class="popup-{$objectName}-close">✕</button></div><div class="popup-{$objectName}-content"><p class="popup-{$objectName}-synopsis">' + CONFIG.synopsis + '</p><div class="popup-{$objectName}-copyright"><strong>© ' + CONFIG.copyright.year + ' ' + CONFIG.copyright.owner + '</strong><br>' + CONFIG.copyright.text + '</div></div><div class="popup-{$objectName}-footer"><a href="' + CONFIG.ctaUrl + '" class="popup-{$objectName}-cta" target="_blank">' + CONFIG.ctaText + '</a></div></div>';
 
     document.body.appendChild(overlay);
     currentPopup = overlay;
-    requestAnimationFrame(() => overlay.classList.add("active"));
+    requestAnimationFrame(function() { overlay.classList.add("active"); });
 
     overlay.querySelector(".popup-{$objectName}-close").addEventListener("click", close);
-    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    overlay.addEventListener("click", function(e) { if (e.target === overlay) close(); });
   }
 
   function close() {
     if (currentPopup) {
       currentPopup.classList.remove("active");
-      setTimeout(() => { currentPopup?.remove(); currentPopup = null; }, 300);
+      setTimeout(function() { if(currentPopup) { currentPopup.remove(); currentPopup = null; } }, 300);
     }
   }
 
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && currentPopup) close(); });
+  document.addEventListener("keydown", function(e) { if (e.key === "Escape" && currentPopup) close(); });
 
   window.atlantisPopups = window.atlantisPopups || {};
-  window.atlantisPopups[POPUP_ID] = { show, close, config: CONFIG };
+  window.atlantisPopups[POPUP_ID] = { show: show, close: close, config: CONFIG };
 
-  console.log("🎬 Popup {$objectName} chargé");
+  console.log("🎬 Popup " + POPUP_ID + " chargé");
 })();
 JS;
 }
@@ -694,83 +573,45 @@ function generateIframePopupJS($objectName, $config, $timestamp) {
 
   let currentPopup = null;
 
-  const STYLES = `
-    .popup-{$objectName}-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.95);
-      z-index: 99999; display: flex; align-items: center; justify-content: center;
-      opacity: 0; transition: opacity 0.3s ease;
-    }
-    .popup-{$objectName}-overlay.active { opacity: 1; }
-    .popup-{$objectName} {
-      background: \${CONFIG.colors.background}; border-radius: 16px;
-      width: 90%; max-width: \${CONFIG.maxWidth}; height: 85vh; overflow: hidden;
-      box-shadow: 0 30px 70px rgba(0,0,0,0.6);
-      transform: scale(0.95); transition: transform 0.3s ease;
-      display: flex; flex-direction: column;
-    }
-    .popup-{$objectName}-overlay.active .popup-{$objectName} { transform: scale(1); }
-    .popup-{$objectName}-header {
-      padding: 15px 20px; background: \${CONFIG.colors.header};
-      display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
-    }
-    .popup-{$objectName}-title { color: white; font-size: 16px; display: flex; align-items: center; gap: 10px; margin: 0; font-weight: 600; }
-    .popup-{$objectName}-close {
-      background: rgba(255,255,255,0.1); border: none;
-      width: 32px; height: 32px; border-radius: 50%;
-      color: white; font-size: 18px; cursor: pointer;
-    }
-    .popup-{$objectName}-iframe { flex: 1; border: none; background: white; width: 100%; }
-  `;
-
   function injectStyles() {
-    if (!document.getElementById("popup-{$objectName}-styles")) {
-      const style = document.createElement("style");
-      style.id = "popup-{$objectName}-styles";
-      style.textContent = STYLES;
-      document.head.appendChild(style);
-    }
+    if (document.getElementById("popup-{$objectName}-styles")) return;
+    var style = document.createElement("style");
+    style.id = "popup-{$objectName}-styles";
+    style.textContent = ".popup-{$objectName}-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:99999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s}.popup-{$objectName}-overlay.active{opacity:1}.popup-{$objectName}{background:" + CONFIG.colors.background + ";border-radius:16px;width:90%;max-width:" + CONFIG.maxWidth + ";height:85vh;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,0.6);transform:scale(0.95);transition:transform 0.3s;display:flex;flex-direction:column}.popup-{$objectName}-overlay.active .popup-{$objectName}{transform:scale(1)}.popup-{$objectName}-header{padding:15px 20px;background:" + CONFIG.colors.header + ";display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1)}.popup-{$objectName}-title{color:white;font-size:16px;display:flex;align-items:center;gap:10px;margin:0;font-weight:600}.popup-{$objectName}-close{background:rgba(255,255,255,0.1);border:none;width:32px;height:32px;border-radius:50%;color:white;font-size:18px;cursor:pointer}.popup-{$objectName}-iframe{flex:1;border:none;background:white;width:100%}";
+    document.head.appendChild(style);
   }
 
   function show() {
     if (currentPopup) { close(); return; }
     injectStyles();
 
-    const overlay = document.createElement("div");
+    var overlay = document.createElement("div");
     overlay.className = "popup-{$objectName}-overlay";
-    overlay.innerHTML = `
-      <div class="popup-{$objectName}">
-        <div class="popup-{$objectName}-header">
-          <h2 class="popup-{$objectName}-title"><span>\${CONFIG.icon}</span> \${CONFIG.title}</h2>
-          <button class="popup-{$objectName}-close">✕</button>
-        </div>
-        <iframe src="\${CONFIG.url}" class="popup-{$objectName}-iframe"></iframe>
-      </div>
-    `;
+    overlay.innerHTML = '<div class="popup-{$objectName}"><div class="popup-{$objectName}-header"><h2 class="popup-{$objectName}-title"><span>' + CONFIG.icon + '</span> ' + CONFIG.title + '</h2><button class="popup-{$objectName}-close">✕</button></div><iframe src="' + CONFIG.url + '" class="popup-{$objectName}-iframe"></iframe></div>';
 
     document.body.appendChild(overlay);
     currentPopup = overlay;
-    requestAnimationFrame(() => overlay.classList.add("active"));
+    requestAnimationFrame(function() { overlay.classList.add("active"); });
 
     overlay.querySelector(".popup-{$objectName}-close").addEventListener("click", close);
-    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    overlay.addEventListener("click", function(e) { if (e.target === overlay) close(); });
   }
 
   function close() {
     if (currentPopup) {
-      const iframe = currentPopup.querySelector("iframe");
+      var iframe = currentPopup.querySelector("iframe");
       if (iframe) iframe.src = "";
       currentPopup.classList.remove("active");
-      setTimeout(() => { currentPopup?.remove(); currentPopup = null; }, 300);
+      setTimeout(function() { if(currentPopup) { currentPopup.remove(); currentPopup = null; } }, 300);
     }
   }
 
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && currentPopup) close(); });
+  document.addEventListener("keydown", function(e) { if (e.key === "Escape" && currentPopup) close(); });
 
   window.atlantisPopups = window.atlantisPopups || {};
-  window.atlantisPopups[POPUP_ID] = { show, close, config: CONFIG };
+  window.atlantisPopups[POPUP_ID] = { show: show, close: close, config: CONFIG };
 
-  console.log("🌐 Popup {$objectName} chargé");
+  console.log("🌐 Popup " + POPUP_ID + " chargé");
 })();
 JS;
 }
@@ -804,34 +645,21 @@ function generateCustomPopupJS($objectName, $config, $timestamp) {
   let currentPopup = null;
 
   function injectStyles() {
-    if (!document.getElementById("popup-{$objectName}-styles")) {
-      const style = document.createElement("style");
-      style.id = "popup-{$objectName}-styles";
-      style.textContent = `
-        .popup-{$objectName}-overlay {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-          z-index: 99999; display: flex; align-items: center; justify-content: center;
-          opacity: 0; transition: opacity 0.3s ease;
-        }
-        .popup-{$objectName}-overlay.active { opacity: 1; }
-        .popup-{$objectName}-container {
-          transform: scale(0.95); transition: transform 0.3s ease;
-        }
-        .popup-{$objectName}-overlay.active .popup-{$objectName}-container { transform: scale(1); }
-        \${CONFIG.css}
-      `;
-      document.head.appendChild(style);
-    }
+    if (document.getElementById("popup-{$objectName}-styles")) return;
+    var style = document.createElement("style");
+    style.id = "popup-{$objectName}-styles";
+    style.textContent = ".popup-{$objectName}-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s}.popup-{$objectName}-overlay.active{opacity:1}.popup-{$objectName}-container{transform:scale(0.95);transition:transform 0.3s}.popup-{$objectName}-overlay.active .popup-{$objectName}-container{transform:scale(1)}" + CONFIG.css;
+    document.head.appendChild(style);
   }
 
   function show() {
     if (currentPopup) { close(); return; }
     injectStyles();
 
-    const overlay = document.createElement("div");
+    var overlay = document.createElement("div");
     overlay.className = "popup-{$objectName}-overlay";
     
-    const container = document.createElement("div");
+    var container = document.createElement("div");
     container.className = "popup-{$objectName}-container";
     container.innerHTML = CONFIG.html;
     
@@ -839,27 +667,27 @@ function generateCustomPopupJS($objectName, $config, $timestamp) {
     document.body.appendChild(overlay);
     currentPopup = overlay;
 
-    requestAnimationFrame(() => overlay.classList.add("active"));
+    requestAnimationFrame(function() { overlay.classList.add("active"); });
 
-    const closeBtn = container.querySelector(".custom-close, [data-close], .close-btn");
+    var closeBtn = container.querySelector(".custom-close, [data-close], .close-btn");
     if (closeBtn) closeBtn.addEventListener("click", close);
 
-    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    overlay.addEventListener("click", function(e) { if (e.target === overlay) close(); });
   }
 
   function close() {
     if (currentPopup) {
       currentPopup.classList.remove("active");
-      setTimeout(() => { currentPopup?.remove(); currentPopup = null; }, 300);
+      setTimeout(function() { if(currentPopup) { currentPopup.remove(); currentPopup = null; } }, 300);
     }
   }
 
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && currentPopup) close(); });
+  document.addEventListener("keydown", function(e) { if (e.key === "Escape" && currentPopup) close(); });
 
   window.atlantisPopups = window.atlantisPopups || {};
-  window.atlantisPopups[POPUP_ID] = { show, close, config: CONFIG };
+  window.atlantisPopups[POPUP_ID] = { show: show, close: close, config: CONFIG };
 
-  console.log("🛠️ Popup {$objectName} chargé");
+  console.log("🛠️ Popup " + POPUP_ID + " chargé");
 })();
 JS;
 }

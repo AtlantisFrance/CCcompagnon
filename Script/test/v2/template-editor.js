@@ -1,33 +1,13 @@
 /**
  * ============================================
- * 🎨 TEMPLATE EDITOR - ATLANTIS CITY
- * Module d'édition de templates popup
- *
- * Architecture modulaire:
- * - Cet éditeur gère le container (modal, sidebar, save)
- * - Chaque template gère son propre formulaire et ses champs
- * - Disposition: Sidebar | Formulaire | Aperçu (temps réel)
- *
- * Fichiers requis:
- * - template-editor.css
- * - templates/contact.tpl.js
- * - templates/synopsis.tpl.js
- * - templates/iframe.tpl.js
- *
- * 🧪 COMMANDES CONSOLE:
- * - c1_openeditor()  → Éditeur template Carré 1
- * - p1_openeditor()  → Éditeur template Portrait 1
- * - l1_openeditor()  → Éditeur template Paysage 1
- * - template_edit("c1_obj") → Par ID objet
+ * 🎨 TEMPLATE EDITOR - POPUP STUDIO DESIGN
+ * Atlantis City - v2.3 (Super Smooth Updates)
  * ============================================
  */
 
 (function () {
   "use strict";
 
-  // ============================================
-  // ⚙️ CONFIGURATION
-  // ============================================
   const CONFIG = {
     apiBase: "https://compagnon.atlantis-city.com/api",
     cssUrl:
@@ -36,28 +16,16 @@
       "https://compagnon.atlantis-city.com/Script/test/v2/templates/",
   };
 
-  // Types de templates disponibles
   const TEMPLATE_TYPES = {
     contact: {
       name: "Fiche Contact",
       icon: "📇",
-      description: "Carte de contact avec liens sociaux",
+      description: "Carte avec liens sociaux",
     },
-    synopsis: {
-      name: "Synopsis / Présentation",
-      icon: "🎬",
-      description: "Texte descriptif avec CTA",
-    },
-    iframe: {
-      name: "Iframe Site Web",
-      icon: "🌐",
-      description: "Intégration d'un site externe",
-    },
+    synopsis: { name: "Synopsis", icon: "🎬", description: "Texte descriptif" },
+    iframe: { name: "Iframe", icon: "🌐", description: "Site externe" },
   };
 
-  // ============================================
-  // 📊 ÉTAT LOCAL
-  // ============================================
   let state = {
     isOpen: false,
     objectConfig: null,
@@ -69,28 +37,36 @@
     templatesLoaded: false,
   };
 
+  // Flag pour éviter double binding
+  let eventsInitialized = false;
+
   // ============================================
-  // 📦 CHARGEMENT CSS EXTERNE
+  // 📦 CHARGEMENT RESSOURCES
   // ============================================
   function loadCSS() {
     return new Promise((resolve) => {
+      // Toujours injecter l'animation flash
+      if (!document.getElementById("tpl-flash-animation")) {
+        const animStyle = document.createElement("style");
+        animStyle.id = "tpl-flash-animation";
+        animStyle.textContent =
+          "@keyframes tpl-flash{0%{box-shadow:0 0 0 0 rgba(99,102,241,0.8)}50%{box-shadow:0 0 20px 5px rgba(99,102,241,0.5)}100%{box-shadow:0 0 0 0 transparent}}";
+        document.head.appendChild(animStyle);
+      }
+
       if (document.getElementById("tpl-editor-styles")) {
         resolve();
         return;
       }
-
       const link = document.createElement("link");
       link.id = "tpl-editor-styles";
       link.rel = "stylesheet";
       link.href = CONFIG.cssUrl + "?v=" + Date.now();
       link.onload = () => {
-        console.log("✅ Template Editor CSS chargé");
+        console.log("✅ CSS chargé");
         resolve();
       };
       link.onerror = () => {
-        console.warn(
-          "⚠️ CSS externe non trouvé, utilisation des styles inline"
-        );
         injectFallbackStyles();
         resolve();
       };
@@ -98,242 +74,113 @@
     });
   }
 
-  // Styles de secours si le CSS externe ne charge pas
-  function injectFallbackStyles() {
-    if (document.getElementById("tpl-editor-styles-fallback")) return;
+  function loadFontAwesome() {
+    if (document.getElementById("fa-icons")) return;
+    const link = document.createElement("link");
+    link.id = "fa-icons";
+    link.rel = "stylesheet";
+    link.href =
+      "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css";
+    document.head.appendChild(link);
+  }
 
+  function injectFallbackStyles() {
+    if (document.getElementById("tpl-fallback-styles")) return;
     const style = document.createElement("style");
-    style.id = "tpl-editor-styles-fallback";
+    style.id = "tpl-fallback-styles";
     style.textContent = `
-      .tpl-editor-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 99999; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; font-family: system-ui, sans-serif; }
-      .tpl-editor-overlay.active { opacity: 1; }
-      .tpl-editor-modal { background: #1e293b; border-radius: 16px; width: 1400px; max-width: 95vw; max-height: 92vh; overflow: hidden; transform: scale(0.95); transition: transform 0.3s; display: flex; flex-direction: column; }
-      .tpl-editor-overlay.active .tpl-editor-modal { transform: scale(1); }
-      .tpl-editor-header { padding: 15px 20px; background: #0f172a; display: flex; justify-content: space-between; align-items: center; }
-      .tpl-editor-title { color: #f8fafc; font-size: 16px; font-weight: 600; margin: 0; }
-      .tpl-editor-close { background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; }
-      .tpl-editor-body { display: grid; grid-template-columns: 240px minmax(300px, 1fr) 420px; flex: 1; overflow: hidden; }
-      .tpl-sidebar { background: #0f172a; padding: 15px; overflow-y: auto; border-right: 1px solid #334155; }
-      .tpl-sidebar-title { color: #64748b; font-size: 11px; text-transform: uppercase; margin-bottom: 12px; }
-      .tpl-type-btn { display: flex; align-items: center; gap: 10px; padding: 10px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; }
-      .tpl-type-btn.active { border-color: #3b82f6; background: rgba(59,130,246,0.15); }
-      .tpl-type-icon { font-size: 16px; }
-      .tpl-type-name { color: #e2e8f0; font-size: 12px; }
-      .tpl-type-desc { color: #64748b; font-size: 10px; }
-      .tpl-form-panel { overflow-y: auto; padding: 20px; }
-      .tpl-form-panel-title { color: #94a3b8; font-size: 12px; text-transform: uppercase; margin-bottom: 15px; font-weight: 600; }
-      .tpl-preview-panel { background: #0f172a; border-left: 1px solid #334155; display: flex; flex-direction: column; }
-      .tpl-preview-title { color: #94a3b8; font-size: 12px; text-transform: uppercase; padding: 15px 20px; font-weight: 600; border-bottom: 1px solid #334155; }
-      .tpl-preview-content { flex: 1; overflow-y: auto; padding: 20px; display: flex; align-items: center; justify-content: center; }
-      .tpl-preview-frame { background: #000; border-radius: 8px; width: 100%; max-width: 320px; overflow: hidden; }
-      .tpl-form-section { margin-bottom: 24px; }
-      .tpl-form-section-title { color: #94a3b8; font-size: 12px; text-transform: uppercase; margin-bottom: 12px; }
-      .tpl-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-      .tpl-form-grid.single { grid-template-columns: 1fr; }
-      .tpl-field { display: flex; flex-direction: column; gap: 6px; }
-      .tpl-field.full { grid-column: 1 / -1; }
-      .tpl-label { color: #94a3b8; font-size: 12px; }
-      .tpl-input, .tpl-textarea, .tpl-select { padding: 10px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 13px; }
-      .tpl-input:focus, .tpl-textarea:focus { outline: none; border-color: #3b82f6; }
-      .tpl-textarea { resize: vertical; min-height: 80px; }
-      .tpl-contacts-list { display: flex; flex-direction: column; gap: 10px; }
-      .tpl-contact-item { display: grid; grid-template-columns: 100px 1fr 1fr auto; gap: 8px; padding: 10px; background: #0f172a; border-radius: 8px; align-items: center; }
-      .tpl-contact-remove { background: #ef4444; color: white; border: none; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; }
-      .tpl-add-btn { padding: 12px; background: rgba(59,130,246,0.1); border: 1px dashed #3b82f6; border-radius: 8px; color: #3b82f6; cursor: pointer; text-align: center; }
-      .tpl-color-field { display: flex; align-items: center; gap: 10px; }
-      .tpl-color-preview { width: 36px; height: 36px; border-radius: 8px; border: 2px solid #334155; cursor: pointer; position: relative; }
-      .tpl-color-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-      .tpl-editor-footer { padding: 15px 20px; background: #0f172a; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #334155; }
-      .tpl-status { color: #94a3b8; font-size: 13px; }
-      .tpl-status.warning { color: #fbbf24; }
-      .tpl-status.success { color: #4ade80; }
-      .tpl-status.error { color: #ef4444; }
-      .tpl-footer-actions { display: flex; gap: 10px; }
-      .tpl-btn { padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
-      .tpl-btn-secondary { background: #334155; color: #e2e8f0; }
-      .tpl-btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
-      .tpl-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-      .tpl-zone-badge { background: rgba(139,92,246,0.2); color: #a78bfa; padding: 3px 10px; border-radius: 12px; font-size: 11px; }
-      .tpl-loading { text-align: center; padding: 40px; color: #94a3b8; }
-      @media (max-width: 1000px) { .tpl-editor-body { grid-template-columns: 1fr; } .tpl-sidebar, .tpl-preview-panel { display: none; } }
+      .tpl-editor-overlay{position:fixed;inset:0;background:#020617;z-index:99999;display:flex;font-family:system-ui}
+      .tpl-editor-overlay.active{opacity:1}
+      .tpl-editor-modal{display:flex;width:100%;height:100%}
+      .tpl-editor-left{width:420px;display:flex;flex-direction:column;background:#0f172a;border-right:1px solid #1e293b}
+      .tpl-editor-header{padding:20px;border-bottom:1px solid #1e293b;display:flex;justify-content:space-between}
+      .tpl-editor-content{flex:1;overflow-y:auto;padding:20px}
+      .tpl-editor-right{flex:1;background:#050505;display:flex;align-items:center;justify-content:center}
+      .tpl-glass-panel{background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.05);border-radius:16px;padding:20px;margin-bottom:20px}
+      .tpl-input{width:100%;padding:12px;background:rgba(2,6,23,0.8);border:1px solid #1e293b;border-radius:10px;color:#e2e8f0;font-size:13px;box-sizing:border-box}
+      .tpl-input:focus{outline:none;border-color:#6366f1}
+      .tpl-range{width:100%}
+      .tpl-btn{padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;border:none;cursor:pointer}
+      .tpl-btn-primary{background:#6366f1;color:white}
+      .tpl-btn-secondary{background:#1e293b;color:#e2e8f0}
+      @keyframes tpl-flash{0%{box-shadow:0 0 0 0 rgba(99,102,241,0.8)}50%{box-shadow:0 0 20px 5px rgba(99,102,241,0.5)}100%{box-shadow:0 0 0 0 transparent}}
     `;
     document.head.appendChild(style);
   }
 
-  // ============================================
-  // 📦 CHARGEMENT TEMPLATES EXTERNES
-  // ============================================
   async function loadTemplates() {
     if (state.templatesLoaded) return;
-
-    const templateFiles = [
-      "contact.tpl.js",
-      "synopsis.tpl.js",
-      "iframe.tpl.js",
-    ];
-
     window.ATLANTIS_TEMPLATES = window.ATLANTIS_TEMPLATES || {};
-
-    for (const file of templateFiles) {
+    for (const file of ["contact.tpl.js", "synopsis.tpl.js", "iframe.tpl.js"]) {
       try {
         await loadScript(CONFIG.templatesBaseUrl + file);
       } catch (e) {
-        console.warn(`⚠️ Template ${file} non chargé:`, e);
+        console.warn(`⚠️ ${file} non chargé`);
       }
     }
-
     state.templatesLoaded = true;
-    console.log(
-      "✅ Templates chargés:",
-      Object.keys(window.ATLANTIS_TEMPLATES)
-    );
+    console.log("✅ Templates:", Object.keys(window.ATLANTIS_TEMPLATES));
   }
 
   function loadScript(url) {
     return new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = url + "?v=" + Date.now();
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
+      const s = document.createElement("script");
+      s.src = url + "?v=" + Date.now();
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
     });
   }
 
   // ============================================
-  // 🔐 AUTH & PERMISSIONS
+  // 🔐 AUTH
   // ============================================
   function getUser() {
-    if (window.atlantisPermissions && window.atlantisPermissions.getUser) {
-      return window.atlantisPermissions.getUser();
+    if (window.atlantisAuth?.getUser) return window.atlantisAuth.getUser();
+    try {
+      return JSON.parse(localStorage.getItem("atlantis_auth_user"));
+    } catch (e) {
+      return null;
     }
-    if (window.atlantisAuth && window.atlantisAuth.getUser) {
-      return window.atlantisAuth.getUser();
-    }
-    const stored = localStorage.getItem("atlantis_auth_user");
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {}
-    }
-    return null;
   }
 
   function getToken() {
-    let token = null;
-
-    try {
-      if (
-        window.atlantisAuth &&
-        typeof window.atlantisAuth.getToken === "function"
-      ) {
-        token = window.atlantisAuth.getToken();
-        if (token) {
-          console.log(
-            "🔑 Token via atlantisAuth:",
-            token.substring(0, 20) + "..."
-          );
-          return token;
-        }
-      }
-    } catch (e) {
-      console.warn("⚠️ Erreur atlantisAuth:", e);
+    if (window.atlantisAuth?.getToken) {
+      const t = window.atlantisAuth.getToken();
+      if (t) return t;
     }
-
-    token = localStorage.getItem("atlantis_auth_token");
-    if (token) {
-      console.log(
-        "🔑 Token via localStorage atlantis_auth_token:",
-        token.substring(0, 20) + "..."
-      );
-      return token;
-    }
-
-    token = localStorage.getItem("atlantis_token");
-    if (token) {
-      console.log(
-        "🔑 Token via localStorage atlantis_token:",
-        token.substring(0, 20) + "..."
-      );
-      return token;
-    }
-
-    try {
-      const cookieMatch = document.cookie.match(/atlantis_token=([^;]+)/);
-      if (cookieMatch) {
-        token = cookieMatch[1];
-        console.log("🔑 Token via cookie:", token.substring(0, 20) + "...");
-        return token;
-      }
-    } catch (e) {}
-
-    console.error("❌ Aucun token trouvé!");
-    return null;
+    return (
+      localStorage.getItem("atlantis_auth_token") ||
+      localStorage.getItem("atlantis_token") ||
+      null
+    );
   }
 
   function checkZoneAccess(zoneSlug) {
-    if (
-      window.atlantisPermissions &&
-      window.atlantisPermissions.checkZoneAccess
-    ) {
+    if (window.atlantisPermissions?.checkZoneAccess)
       return window.atlantisPermissions.checkZoneAccess(zoneSlug);
-    }
-
     const user = getUser();
+    if (!user) return { allowed: false, reason: "Non connecté" };
+    if (user.global_role === "super_admin")
+      return { allowed: true, reason: "Super Admin" };
     const spaceSlug = window.ATLANTIS_SPACE || "default";
-
-    if (!user) {
-      return {
-        allowed: false,
-        reason: "Vous devez être connecté",
-        code: "NOT_LOGGED_IN",
-      };
-    }
-    if (user.global_role === "super_admin") {
-      return {
-        allowed: true,
-        reason: "✅ Accès Super Admin",
-        code: "SUPER_ADMIN",
-      };
-    }
-
-    const spaceRoles = user.space_roles || [];
-    const isSpaceAdmin = spaceRoles.some(
-      (r) => r.space_slug === spaceSlug && r.role === "space_admin"
-    );
-    if (isSpaceAdmin) {
-      return {
-        allowed: true,
-        reason: "✅ Accès Space Admin",
-        code: "SPACE_ADMIN",
-      };
-    }
-
-    const isZoneAdmin = spaceRoles.some(
-      (r) =>
-        r.space_slug === spaceSlug &&
-        r.zone_slug === zoneSlug &&
-        (r.role === "zone_admin" || r.role === "space_admin")
-    );
-    if (isZoneAdmin) {
-      return {
-        allowed: true,
-        reason: "✅ Accès Zone Admin",
-        code: "ZONE_ADMIN",
-      };
-    }
-
-    return {
-      allowed: false,
-      reason: `❌ Pas d'accès à "${zoneSlug}"`,
-      code: "NO_ACCESS",
-    };
+    const roles = user.space_roles || [];
+    if (
+      roles.some((r) => r.space_slug === spaceSlug && r.role === "space_admin")
+    )
+      return { allowed: true, reason: "Space Admin" };
+    if (
+      roles.some((r) => r.space_slug === spaceSlug && r.zone_slug === zoneSlug)
+    )
+      return { allowed: true, reason: "Zone Admin" };
+    return { allowed: false, reason: "Pas d'accès" };
   }
 
   // ============================================
-  // 🛠️ HELPERS (passés aux templates)
+  // 🛠️ HELPERS
   // ============================================
   const helpers = {
-    escapeHtml: function (str) {
+    escapeHtml: (str) => {
       if (!str) return "";
       return String(str)
         .replace(/&/g, "&amp;")
@@ -347,6 +194,7 @@
   // 🚀 OPEN / CLOSE
   // ============================================
   async function open(objectConfig) {
+    loadFontAwesome();
     await loadCSS();
     await loadTemplates();
 
@@ -357,7 +205,7 @@
       isOpen: true,
       objectConfig: { ...objectConfig, spaceSlug },
       templateType: "contact",
-      templateData: getDefaultTemplateData("contact"),
+      templateData: getDefaultData("contact"),
       hasChanges: false,
       isLoading: true,
       isSaving: false,
@@ -365,388 +213,405 @@
     };
 
     render();
-    await loadExistingTemplate();
-    console.log("🎨 Template Editor ouvert:", objectConfig);
+    await loadExisting();
+    console.log("🎨 Editor ouvert:", objectConfig);
   }
 
   function close() {
-    if (state.hasChanges) {
-      if (
-        !confirm(
-          "Des modifications non sauvegardées seront perdues. Fermer quand même ?"
-        )
-      ) {
-        return;
-      }
-    }
+    if (
+      state.hasChanges &&
+      !confirm("Modifications non sauvegardées. Fermer ?")
+    )
+      return;
     const overlay = document.querySelector(".tpl-editor-overlay");
     if (overlay) {
       overlay.classList.remove("active");
       setTimeout(() => overlay.remove(), 300);
     }
     state.isOpen = false;
+    eventsInitialized = false;
+  }
+
+  function getDefaultData(type) {
+    const tpl = window.ATLANTIS_TEMPLATES?.[type];
+    return tpl?.getDefaultData ? tpl.getDefaultData() : { title: "Nouveau" };
   }
 
   // ============================================
-  // 📄 TEMPLATES PAR DÉFAUT
+  // 📡 LOAD EXISTING
   // ============================================
-  function getDefaultTemplateData(type) {
-    const template = window.ATLANTIS_TEMPLATES?.[type];
-    if (template && template.getDefaultData) {
-      return template.getDefaultData();
-    }
-    return {
-      title: "Nouveau template",
-      colors: { background: "#1a1a2e", accent: "#3b82f6" },
-    };
-  }
-
-  // ============================================
-  // 📡 LOAD EXISTING TEMPLATE
-  // ============================================
-  async function loadExistingTemplate() {
+  async function loadExisting() {
     try {
       const { objectConfig } = state;
-      const response = await fetch(
-        `${CONFIG.apiBase}/popups/get.php?space_slug=${objectConfig.spaceSlug}&object_name=${objectConfig.id}`
-      );
+      const url = `${CONFIG.apiBase}/popups/get.php?space_slug=${objectConfig.spaceSlug}&object_name=${objectConfig.id}`;
+      console.log("📥 Loading from:", url);
 
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        console.log("📥 API response:", data);
+
         if (data.success && data.exists && data.template) {
           state.templateType = data.template.template_type || "contact";
-          state.templateData = JSON.parse(
-            data.template.template_config || "{}"
-          );
-          console.log("📥 Template existant chargé:", state.templateType);
+          try {
+            state.templateData = JSON.parse(
+              data.template.template_config || "{}"
+            );
+            console.log("📥 Loaded templateData:", state.templateData);
+          } catch (e) {
+            console.error("❌ Parse error:", e);
+            state.templateData = getDefaultData(state.templateType);
+          }
         }
       }
-    } catch (err) {
-      console.log(
-        "ℹ️ Pas de template existant, utilisation des valeurs par défaut"
-      );
+    } catch (e) {
+      console.log("ℹ️ Nouveau template ou erreur:", e);
     }
-
     state.isLoading = false;
     render();
   }
 
   // ============================================
-  // 🎨 RENDER PRINCIPAL (3 colonnes)
+  // 🎨 RENDER
   // ============================================
   function render() {
     document
       .querySelectorAll(".tpl-editor-overlay")
       .forEach((el) => el.remove());
+    eventsInitialized = false;
 
-    const { objectConfig, templateType, isLoading } = state;
+    const { templateType, isLoading } = state;
+
+    const typeTabs = Object.entries(TEMPLATE_TYPES)
+      .map(
+        ([key, t]) => `
+      <button class="tpl-type-tab ${
+        templateType === key ? "active" : ""
+      }" data-type="${key}">
+        <span class="tpl-type-tab-icon">${t.icon}</span>
+        ${t.name}
+      </button>
+    `
+      )
+      .join("");
 
     const html = `
       <div class="tpl-editor-overlay">
         <div class="tpl-editor-modal">
-          <!-- HEADER -->
-          <div class="tpl-editor-header">
-            <h3 class="tpl-editor-title">
-              <span>🎨</span> Template Editor : ${
-                objectConfig.title || objectConfig.id
-              }
-              <span class="tpl-zone-badge">📍 ${objectConfig.zone || "-"}</span>
-            </h3>
-            <button class="tpl-editor-close" id="tpl-close-btn" aria-label="Fermer">✕</button>
-          </div>
-
-          <!-- BODY - 3 COLONNES -->
-          <div class="tpl-editor-body">
-            <!-- SIDEBAR - Types de templates -->
-            <div class="tpl-sidebar">
-              <div class="tpl-sidebar-title">Type de template</div>
-              <div class="tpl-type-list">
-                ${Object.entries(TEMPLATE_TYPES)
-                  .map(
-                    ([key, t]) => `
-                  <button class="tpl-type-btn ${
-                    templateType === key ? "active" : ""
-                  }" data-type="${key}">
-                    <span class="tpl-type-icon">${t.icon}</span>
-                    <div class="tpl-type-info">
-                      <div class="tpl-type-name">${t.name}</div>
-                      <div class="tpl-type-desc">${t.description}</div>
-                    </div>
-                  </button>
-                `
-                  )
-                  .join("")}
+          <div class="tpl-editor-left">
+            <div class="tpl-editor-header">
+              <div class="tpl-editor-header-left">
+                <h1>Popup Studio</h1>
+                <p>Éditeur de template</p>
               </div>
+              <button class="tpl-editor-close" id="tpl-close-btn">✕</button>
             </div>
-
-            <!-- FORMULAIRE -->
-            <div class="tpl-form-panel">
-              <div class="tpl-form-panel-title">✏️ Édition</div>
+            
+            <div class="tpl-editor-content" id="tpl-editor-content">
+              <div class="tpl-type-tabs">${typeTabs}</div>
               <div id="tpl-form-content">
                 ${
                   isLoading
-                    ? '<div class="tpl-loading">⏳ Chargement...</div>'
-                    : renderEditForm()
+                    ? '<div style="text-align:center;padding:40px;color:#64748b;">⏳ Chargement...</div>'
+                    : renderForm()
                 }
               </div>
             </div>
-
-            <!-- APERÇU (temps réel) -->
-            <div class="tpl-preview-panel">
-              <div class="tpl-preview-title">👁️ Aperçu</div>
-              <div class="tpl-preview-content" id="tpl-preview-content">
-                ${
-                  isLoading
-                    ? '<div class="tpl-loading">⏳</div>'
-                    : renderPreview()
-                }
+            
+            <div class="tpl-editor-footer">
+              <div class="tpl-status ${
+                state.hasChanges ? "warning" : ""
+              }" id="tpl-status">
+                ${state.hasChanges ? "⚠️ Non sauvegardé" : "✅ Prêt"}
+              </div>
+              <div class="tpl-footer-actions">
+                <button class="tpl-btn tpl-btn-secondary" id="tpl-cancel-btn">Annuler</button>
+                <button class="tpl-btn tpl-btn-primary" id="tpl-save-btn" ${
+                  state.isSaving ? "disabled" : ""
+                }>
+                  ${state.isSaving ? "⏳ Sauvegarde..." : "💾 Sauvegarder"}
+                </button>
               </div>
             </div>
           </div>
-
-          <!-- FOOTER -->
-          <div class="tpl-editor-footer">
-            <div class="tpl-status ${
-              state.hasChanges ? "warning" : ""
-            }" id="tpl-status">
-              ${
-                isLoading
-                  ? "⏳ Chargement..."
-                  : state.hasChanges
-                  ? "⚠️ Modifications non sauvegardées"
-                  : "✅ Prêt"
-              }
+          
+          <div class="tpl-editor-right">
+            <div class="tpl-preview-grid"></div>
+            <div class="tpl-preview-vignette"></div>
+            <div class="tpl-preview-stage" id="tpl-preview-stage">
+              ${isLoading ? "" : renderPreview()}
             </div>
-            <div class="tpl-footer-actions">
-              <button class="tpl-btn tpl-btn-secondary" id="tpl-cancel-btn">Annuler</button>
-              <button class="tpl-btn tpl-btn-primary" id="tpl-save-btn" ${
-                state.isSaving ? "disabled" : ""
-              }>
-                ${state.isSaving ? "⏳ Sauvegarde..." : "💾 Sauvegarder"}
-              </button>
-            </div>
+            <div class="tpl-preview-badge">Live Preview</div>
           </div>
         </div>
       </div>
     `;
 
     document.body.insertAdjacentHTML("beforeend", html);
+
     requestAnimationFrame(() => {
       document.querySelector(".tpl-editor-overlay")?.classList.add("active");
+      initEvents();
     });
-    bindEvents();
   }
 
-  // ============================================
-  // 📝 RENDER FORMULAIRE
-  // ============================================
-  function renderEditForm() {
-    const { templateType, templateData } = state;
-    const template = window.ATLANTIS_TEMPLATES?.[templateType];
-
-    if (template && template.renderForm) {
-      return template.renderForm(templateData, helpers);
-    }
-
-    return `<div class="tpl-loading">Template "${templateType}" non disponible</div>`;
+  function renderForm() {
+    const tpl = window.ATLANTIS_TEMPLATES?.[state.templateType];
+    if (tpl?.renderForm) return tpl.renderForm(state.templateData, helpers);
+    return '<div style="color:#64748b;">Template non disponible</div>';
   }
 
-  // ============================================
-  // 👁️ RENDER APERÇU
-  // ============================================
   function renderPreview() {
-    const { templateType, templateData } = state;
-    const template = window.ATLANTIS_TEMPLATES?.[templateType];
-
-    if (template && template.renderPreview) {
-      return `
-        <div class="tpl-preview-frame">
-          ${template.renderPreview(templateData, helpers)}
-        </div>
-      `;
-    }
-
-    return `<div class="tpl-loading">Aperçu non disponible</div>`;
+    const tpl = window.ATLANTIS_TEMPLATES?.[state.templateType];
+    if (tpl?.renderPreview)
+      return tpl.renderPreview(state.templateData, helpers);
+    return '<div style="color:#64748b;">Aperçu non disponible</div>';
   }
 
-  // ============================================
-  // 🔄 MISE À JOUR APERÇU (temps réel)
-  // ============================================
   function updatePreview() {
-    const previewContainer = document.getElementById("tpl-preview-content");
-    if (previewContainer) {
-      previewContainer.innerHTML = renderPreview();
+    const stage = document.getElementById("tpl-preview-stage");
+    if (stage) stage.innerHTML = renderPreview();
+  }
+
+  // Met à jour SEULEMENT le formulaire (pas tout le modal)
+  function updateFormOnly() {
+    const formContent = document.getElementById("tpl-form-content");
+    if (formContent) {
+      formContent.innerHTML = renderForm();
     }
+    updatePreview();
+    updateStatus();
+  }
+
+  // Met à jour SEULEMENT la liste des contacts (encore plus smooth)
+  function updateContactsOnly() {
+    const tpl = window.ATLANTIS_TEMPLATES?.[state.templateType];
+    const contactsList = document.getElementById("tpl-contacts-list");
+
+    if (contactsList && tpl?.renderContactsList) {
+      contactsList.innerHTML = tpl.renderContactsList(
+        state.templateData,
+        helpers
+      );
+    } else {
+      // Fallback: mettre à jour tout le formulaire
+      updateFormOnly();
+      return;
+    }
+    updatePreview();
+    updateStatus();
   }
 
   // ============================================
-  // 🔗 BIND EVENTS
+  // 🔗 EVENT DELEGATION (fonctionne même après re-render)
   // ============================================
-  function bindEvents() {
+  function initEvents() {
+    if (eventsInitialized) return;
+    eventsInitialized = true;
+
     const overlay = document.querySelector(".tpl-editor-overlay");
     if (!overlay) return;
 
-    // Close
-    document.getElementById("tpl-close-btn")?.addEventListener("click", close);
-    document.getElementById("tpl-cancel-btn")?.addEventListener("click", close);
+    // ========================================
+    // EVENT DELEGATION sur tout l'overlay
+    // ========================================
+    overlay.addEventListener("input", handleAllInputs);
+    overlay.addEventListener("change", handleAllInputs);
+    overlay.addEventListener("click", handleAllClicks);
 
-    // Save
-    document.getElementById("tpl-save-btn")?.addEventListener("click", save);
+    // ESC pour fermer
+    document.addEventListener("keydown", handleKeydown);
 
-    // Type selection
-    document.querySelectorAll(".tpl-type-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const newType = btn.dataset.type;
-        if (newType !== state.templateType) {
-          state.templateType = newType;
-          state.templateData = getDefaultTemplateData(newType);
-          state.hasChanges = true;
-          render();
+    console.log("✅ Events initialisés (delegation)");
+  }
+
+  function handleAllInputs(e) {
+    const target = e.target;
+
+    // ========================================
+    // 📝 INPUTS SIMPLES (data-field)
+    // ========================================
+    if (target.dataset.field) {
+      const field = target.dataset.field;
+      state.templateData[field] = target.value;
+      state.hasChanges = true;
+
+      console.log(`📝 Field "${field}" =`, target.value);
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
+
+    // ========================================
+    // 🎚️ SLIDERS (data-slider-key)
+    // ========================================
+    if (target.dataset.sliderKey) {
+      const key = target.dataset.sliderKey;
+      const value = parseInt(target.value);
+
+      const display = document.getElementById(`tpl-slider-${key}-value`);
+      if (display) display.textContent = value + (key === "hue" ? "°" : "px");
+
+      if (!state.templateData.theme) state.templateData.theme = {};
+      state.templateData.theme[key] = value;
+      state.hasChanges = true;
+
+      console.log(`🎚️ Slider "${key}" =`, value);
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
+
+    // ========================================
+    // 📇 CONTACT FIELDS (data-contact-field)
+    // ========================================
+    if (target.dataset.contactField) {
+      const index = parseInt(target.dataset.index);
+      const field = target.dataset.contactField;
+
+      if (!state.templateData.contacts?.[index]) return;
+
+      const contact = state.templateData.contacts[index];
+      contact[field] = target.value;
+
+      console.log(`📇 Contact[${index}].${field} =`, target.value);
+
+      // Smart links
+      if (field === "type" || field === "value") {
+        if (contact.type === "phone") {
+          contact.href = `tel:${(contact.value || "").replace(/\s+/g, "")}`;
+        } else if (contact.type === "email") {
+          contact.href = `mailto:${(contact.value || "").trim()}`;
         }
-      });
-    });
+      }
 
-    // Form inputs - avec mise à jour aperçu temps réel
-    document
-      .querySelectorAll(".tpl-input, .tpl-textarea, .tpl-select")
-      .forEach((input) => {
-        input.addEventListener("input", handleInputChange);
-      });
+      // Re-render si changement de type
+      if (field === "type") {
+        const labels = {
+          phone: "Téléphone",
+          email: "Email",
+          youtube: "YouTube",
+          facebook: "Facebook",
+          instagram: "Instagram",
+          linkedin: "LinkedIn",
+          tiktok: "TikTok",
+          twitter: "Twitter/X",
+          website: "Site web",
+        };
+        contact.label = labels[contact.type] || contact.type;
+        state.hasChanges = true;
 
-    // Color pickers (générés par les templates)
-    document.querySelectorAll(".tpl-color-input").forEach((input) => {
-      input.addEventListener("input", (e) => {
-        const key = e.target.dataset.colorField;
-        const value = e.target.value;
-        updateNestedField(`colors.${key}`, value);
+        // Mettre à jour SEULEMENT la liste des contacts (smooth)
+        updateContactsOnly();
+        return;
+      }
 
-        const preview = e.target
-          .closest(".tpl-color-field")
-          ?.querySelector(".tpl-color-preview");
-        if (preview) preview.style.background = value;
+      state.hasChanges = true;
+      updateStatus();
+      updatePreview();
+      return;
+    }
+  }
 
-        const hexInput = e.target
-          .closest(".tpl-color-field")
-          ?.querySelector(".tpl-color-hex");
-        if (hexInput) hexInput.value = value;
-      });
-    });
+  function handleAllClicks(e) {
+    const target = e.target;
+    const btn = target.closest("button") || target;
 
-    // Add contact (template contact)
-    document
-      .getElementById("tpl-add-contact")
-      ?.addEventListener("click", addContact);
+    // Close buttons
+    if (btn.id === "tpl-close-btn" || btn.id === "tpl-cancel-btn") {
+      close();
+      return;
+    }
+
+    // Save button
+    if (btn.id === "tpl-save-btn") {
+      save();
+      return;
+    }
+
+    // Type tabs
+    if (btn.classList.contains("tpl-type-tab")) {
+      const newType = btn.dataset.type;
+      if (newType && newType !== state.templateType) {
+        state.templateType = newType;
+        state.templateData = getDefaultData(newType);
+        state.hasChanges = true;
+        render();
+      }
+      return;
+    }
+
+    // Add contact
+    if (btn.id === "tpl-add-contact" || btn.closest("#tpl-add-contact")) {
+      addContact();
+      return;
+    }
 
     // Remove contact
-    document.querySelectorAll("[data-remove-index]").forEach((btn) => {
-      btn.addEventListener("click", () =>
-        removeContact(parseInt(btn.dataset.removeIndex))
-      );
-    });
+    if (
+      btn.dataset.removeIndex !== undefined ||
+      btn.closest("[data-remove-index]")
+    ) {
+      const removeBtn = btn.closest("[data-remove-index]") || btn;
+      const index = parseInt(removeBtn.dataset.removeIndex);
+      if (state.templateData.contacts) {
+        state.templateData.contacts.splice(index, 1);
+        state.hasChanges = true;
 
-    // Contact fields
-    document.querySelectorAll("[data-contact-field]").forEach((input) => {
-      input.addEventListener("input", (e) => {
-        const index = parseInt(e.target.dataset.index);
-        const field = e.target.dataset.contactField;
-        if (state.templateData.contacts?.[index]) {
-          state.templateData.contacts[index][field] = e.target.value;
-          state.hasChanges = true;
-          updateStatus();
-          updatePreview(); // Mise à jour temps réel
-        }
-      });
-    });
-
-    // Click outside
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) close();
-    });
-
-    // ESC
-    const escHandler = (e) => {
-      if (e.key === "Escape" && state.isOpen) {
-        close();
-        document.removeEventListener("keydown", escHandler);
+        // Mettre à jour SEULEMENT la liste des contacts (smooth)
+        updateContactsOnly();
       }
-    };
-    document.addEventListener("keydown", escHandler);
-  }
-
-  // ============================================
-  // 📝 FORM HANDLERS
-  // ============================================
-  function handleInputChange(e) {
-    const field = e.target.dataset.field;
-    if (!field) return;
-    updateNestedField(field, e.target.value);
-  }
-
-  function updateNestedField(field, value) {
-    const parts = field.split(".");
-    let obj = state.templateData;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      const arrayMatch = part.match(/^(\w+)\[(\d+)\]$/);
-
-      if (arrayMatch) {
-        const arrName = arrayMatch[1];
-        const arrIndex = parseInt(arrayMatch[2]);
-        if (!obj[arrName]) obj[arrName] = [];
-        if (!obj[arrName][arrIndex]) obj[arrName][arrIndex] = "";
-        obj = obj[arrName];
-        continue;
-      }
-
-      if (!obj[part]) obj[part] = {};
-      obj = obj[part];
+      return;
     }
 
-    const lastPart = parts[parts.length - 1];
-    const lastMatch = lastPart.match(/^(\w+)\[(\d+)\]$/);
-
-    if (lastMatch) {
-      const arrName = lastMatch[1];
-      const arrIndex = parseInt(lastMatch[2]);
-      if (!obj[arrName]) obj[arrName] = [];
-      obj[arrName][arrIndex] = value;
-    } else {
-      obj[lastPart] = value;
+    // Click outside modal
+    if (target.classList.contains("tpl-editor-overlay")) {
+      close();
+      return;
     }
+  }
 
-    state.hasChanges = true;
-    updateStatus();
-    updatePreview(); // 🔄 Mise à jour aperçu temps réel
+  function handleKeydown(e) {
+    if (e.key === "Escape" && state.isOpen) {
+      close();
+    }
   }
 
   function addContact() {
     if (!state.templateData.contacts) state.templateData.contacts = [];
+
+    // Ajouter le nouveau contact
+    const newIndex = state.templateData.contacts.length;
     state.templateData.contacts.push({
       type: "website",
       label: "Site web",
       value: "",
       href: "",
-      icon: "🌐",
     });
     state.hasChanges = true;
-    render();
-  }
 
-  function removeContact(index) {
-    if (state.templateData.contacts) {
-      state.templateData.contacts.splice(index, 1);
-      state.hasChanges = true;
-      render();
-    }
+    // Mettre à jour SEULEMENT la liste des contacts (super smooth)
+    updateContactsOnly();
+
+    // Scroller vers le nouveau contact
+    requestAnimationFrame(() => {
+      const content = document.getElementById("tpl-editor-content");
+      if (content) {
+        const newCard = content.querySelector(`[data-index="${newIndex}"]`);
+        if (newCard) {
+          newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+          newCard.style.animation = "tpl-flash 0.6s ease";
+        }
+      }
+    });
   }
 
   function updateStatus() {
     const el = document.getElementById("tpl-status");
     if (el) {
-      el.textContent = state.hasChanges
-        ? "⚠️ Modifications non sauvegardées"
-        : "✅ Prêt";
+      el.textContent = state.hasChanges ? "⚠️ Non sauvegardé" : "✅ Prêt";
       el.className = "tpl-status" + (state.hasChanges ? " warning" : "");
     }
   }
@@ -758,23 +623,26 @@
     if (state.isSaving) return;
 
     const btn = document.getElementById("tpl-save-btn");
-    const statusEl = document.getElementById("tpl-status");
+    const status = document.getElementById("tpl-status");
 
     state.isSaving = true;
     if (btn) {
       btn.disabled = true;
       btn.textContent = "⏳ Sauvegarde...";
     }
-    if (statusEl) {
-      statusEl.textContent = "Sauvegarde en cours...";
-      statusEl.className = "tpl-status";
+    if (status) {
+      status.textContent = "Sauvegarde...";
+      status.className = "tpl-status";
     }
 
     try {
       const token = getToken();
-      if (!token) {
-        throw new Error("Non authentifié - Veuillez vous reconnecter");
-      }
+      if (!token) throw new Error("Non authentifié");
+
+      console.log(
+        "💾 Saving templateData:",
+        JSON.stringify(state.templateData, null, 2)
+      );
 
       const payload = {
         space_slug: state.objectConfig.spaceSlug,
@@ -787,32 +655,27 @@
         auth_token: token,
       };
 
-      console.log("📤 Envoi vers API:", CONFIG.apiBase + "/popups/save.php");
+      console.log("💾 Payload:", payload);
 
-      const response = await fetch(`${CONFIG.apiBase}/popups/save.php`, {
+      const res = await fetch(`${CONFIG.apiBase}/popups/save.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      console.log("📥 Réponse status:", response.status);
+      const result = await res.json();
+      console.log("💾 Save result:", result);
 
-      const result = await response.json();
-      console.log("📥 Réponse body:", result);
-
-      if (!result.success) {
-        throw new Error(result.error || "Erreur serveur");
-      }
+      if (!result.success) throw new Error(result.error || "Erreur serveur");
 
       state.hasChanges = false;
-      if (statusEl) {
-        statusEl.textContent = "✅ Sauvegardé !";
-        statusEl.className = "tpl-status success";
+      if (status) {
+        status.textContent = "✅ Sauvegardé !";
+        status.className = "tpl-status success";
       }
       if (btn) btn.textContent = "✨ Sauvegardé";
 
-      console.log("✅ Template sauvegardé:", result);
-
+      // Reload popup script
       if (window.reloadPopupScript) {
         window.reloadPopupScript(
           state.objectConfig.id,
@@ -828,9 +691,9 @@
       }, 2000);
     } catch (err) {
       console.error("❌ Save error:", err);
-      if (statusEl) {
-        statusEl.textContent = "❌ " + err.message;
-        statusEl.className = "tpl-status error";
+      if (status) {
+        status.textContent = "❌ " + err.message;
+        status.className = "tpl-status error";
       }
       if (btn) {
         btn.disabled = false;
@@ -849,76 +712,54 @@
     close,
     isOpen: () => state.isOpen,
     getState: () => ({ ...state }),
-    getToken,
+    debug: () => console.log("State:", JSON.stringify(state, null, 2)),
   };
 
   // ============================================
   // 🧪 COMMANDES CONSOLE
   // ============================================
-  function openEditorForObject(objectId) {
-    const OBJECTS_CONFIG = window.ATLANTIS_OBJECTS_CONFIG;
-    const spaceSlug = window.ATLANTIS_SPACE || "default";
+  function openFor(objectId) {
+    const cfg = window.ATLANTIS_OBJECTS_CONFIG;
+    const space = window.ATLANTIS_SPACE || "default";
 
-    if (!OBJECTS_CONFIG) {
+    if (!cfg) {
       console.error("❌ objects-config.js non chargé!");
       return false;
     }
 
-    const objConfig = OBJECTS_CONFIG[objectId];
-    if (!objConfig) {
+    const obj = cfg[objectId];
+    if (!obj) {
       console.error(`❌ Objet "${objectId}" non trouvé`);
-      console.log(
-        "📋 Objets disponibles:",
-        Object.keys(OBJECTS_CONFIG).join(", ")
-      );
       return false;
     }
 
-    const fullZoneSlug = window.getFullZoneSlug
-      ? window.getFullZoneSlug(objConfig.zone)
-      : `${spaceSlug}-${objConfig.zone}`;
-
-    const access = checkZoneAccess(fullZoneSlug);
-    console.log(`\n🔍 Vérification accès pour ${objectId}:`);
-    console.log(`   Zone: ${fullZoneSlug}`);
-    console.log(`   Résultat: ${access.reason}`);
+    const zone = window.getFullZoneSlug
+      ? window.getFullZoneSlug(obj.zone)
+      : `${space}-${obj.zone}`;
+    const access = checkZoneAccess(zone);
 
     if (!access.allowed) {
-      console.warn(`\n⛔ ACCÈS REFUSÉ: ${access.reason}`);
+      console.warn(`⛔ ${access.reason}`);
       return false;
     }
 
     open({
       id: objectId,
-      title: objConfig.plv?.title || objectId,
-      shader: objConfig.plv?.shader,
-      file: objConfig.plv?.file,
-      zone: objConfig.zone,
-      format: objConfig.plv?.format,
-      spaceSlug: spaceSlug,
+      title: obj.plv?.title || objectId,
+      shader: obj.plv?.shader,
+      zone: obj.zone,
+      format: obj.plv?.format,
+      spaceSlug: space,
     });
-
     return true;
   }
 
-  // Commandes
-  window.c1_openeditor = () => openEditorForObject("c1_obj");
-  window.c2_openeditor = () => openEditorForObject("c2_obj");
-  window.p1_openeditor = () => openEditorForObject("p1_obj");
-  window.l1_openeditor = () => openEditorForObject("l1_obj");
-  window.l2_openeditor = () => openEditorForObject("l2_obj");
-  window.template_edit = (objectId) => openEditorForObject(objectId);
+  window.c1_openeditor = () => openFor("c1_obj");
+  window.c2_openeditor = () => openFor("c2_obj");
+  window.p1_openeditor = () => openFor("p1_obj");
+  window.l1_openeditor = () => openFor("l1_obj");
+  window.l2_openeditor = () => openFor("l2_obj");
+  window.template_edit = openFor;
 
-  // ============================================
-  // 📢 MESSAGE CONSOLE
-  // ============================================
-  console.log(`
-🎨 Template Editor chargé!
-
-📋 COMMANDES:
-   c1_openeditor()     → Éditeur Carré 1
-   p1_openeditor()     → Éditeur Portrait 1
-   l1_openeditor()     → Éditeur Paysage 1
-   template_edit("id") → Par ID objet
-`);
+  console.log("🎨 Popup Studio Editor v2.3 chargé! (Super Smooth)");
 })();

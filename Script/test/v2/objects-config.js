@@ -2,16 +2,41 @@
  * ============================================
  * ⚙️ OBJECTS CONFIG - ATLANTIS CITY
  * Configuration centralisée de tous les objets cliquables
+ * ============================================
+ * v1.0 - 2024-12-01 - Version initiale
+ * v1.1 - 2024-12-10 - Ajout type "action" + plafond_obj reload_plv
+ * ============================================
  *
  * 📍 L'espace (space) est défini dans body-end.html :
  *    window.ATLANTIS_SPACE = "scenetest";
  *
  * 📍 Ici on définit seulement la ZONE (zone1, zone2...)
  *    Le slug complet sera : {ATLANTIS_SPACE}-{zone}
+ *
+ * 📍 Types d'objets:
+ *    - "plv"     → PLV avec texture uploadable
+ *    - "object"  → Objet simple avec popup
+ *    - "action"  → Objet déclencheur d'action (pas de popup)
+ *
+ * 📍 Actions onClick disponibles:
+ *    - "popup"       → Affiche une popup
+ *    - "upload"      → Ouvre le modal upload (admin)
+ *    - "url"         → Ouvre un lien externe
+ *    - "reload_plv"  → Recharge toutes les textures PLV
  * ============================================
  */
 
 window.ATLANTIS_OBJECTS_CONFIG = {
+  // =========================================
+  // 🔄 ACTION - Rechargement textures
+  // =========================================
+  plafond_obj: {
+    zone: null, // Pas de zone requise
+    type: "action",
+    onClick: "reload_plv", // 🔄 Déclenche le rechargement des textures
+    adminButtons: [], // Pas de boutons admin
+  },
+
   // =========================================
   // 🖼️ PLV CARRÉ - Zone 1
   // =========================================
@@ -121,6 +146,17 @@ window.getObjectConfig = function (objectId) {
  */
 window.listConfiguredObjects = function () {
   return Object.keys(window.ATLANTIS_OBJECTS_CONFIG);
+};
+
+/**
+ * Liste les objets par type
+ * @param {string} type - "plv", "object", "action"
+ * @returns {string[]} - IDs des objets du type
+ */
+window.listObjectsByType = function (type) {
+  return Object.entries(window.ATLANTIS_OBJECTS_CONFIG)
+    .filter(([_, config]) => config.type === type)
+    .map(([id]) => id);
 };
 
 console.log(

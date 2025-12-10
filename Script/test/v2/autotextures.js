@@ -4,12 +4,26 @@
  * Chargement automatique des textures depuis OVH
  * Utilise window.ATLANTIS_SPACE comme identifiant
  * ============================================
+ * v1.0 - 2024-12-01 - Version initiale
+ * v1.1 - 2024-12-10 - Suppression bouton, API simplifiée
+ * v1.2 - 2024-12-10 - Logs conditionnels via perf.js
+ * ============================================
  */
 
 (function () {
   "use strict";
 
   const viewer = WALK.getViewer();
+
+  // ============================================
+  // 📝 LOGGER CONDITIONNEL
+  // Si perf.js est chargé → log, sinon → silence
+  // ============================================
+  const log = (message, type = "info") => {
+    if (window.atlantisLog) {
+      window.atlantisLog("autotextures", message, type);
+    }
+  };
 
   // ============================================
   // ⚙️ CONFIGURATION
@@ -51,96 +65,6 @@
   let isLoading = false;
 
   // ============================================
-  // 🔘 BOUTON RECHARGEMENT
-  // ============================================
-  function createReloadButton() {
-    // Éviter doublon
-    if (document.getElementById("reload-textures-btn")) return;
-
-    const button = document.createElement("button");
-    button.id = "reload-textures-btn";
-    button.innerHTML = "🔄 Actualiser PLV";
-    button.title = "Recharger les textures depuis le serveur";
-
-    button.style.cssText = `
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10000;
-      padding: 10px 20px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: "Segoe UI", Roboto, sans-serif;
-      color: white;
-      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-radius: 25px;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-      transition: all 0.3s ease;
-    `;
-
-    button.addEventListener("mouseenter", () => {
-      if (!isLoading) {
-        button.style.transform = "translateX(-50%) translateY(-2px)";
-        button.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.5)";
-      }
-    });
-
-    button.addEventListener("mouseleave", () => {
-      if (!isLoading) {
-        button.style.transform = "translateX(-50%)";
-        button.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.3)";
-      }
-    });
-
-    button.addEventListener("click", () => {
-      if (!isLoading) {
-        loadAllTextures();
-      }
-    });
-
-    document.body.appendChild(button);
-  }
-
-  // Mettre à jour l'état visuel du bouton
-  function updateButtonState(loading, success = null) {
-    const button = document.getElementById("reload-textures-btn");
-    if (!button) return;
-
-    isLoading = loading;
-
-    if (loading) {
-      button.innerHTML = "⏳ Chargement...";
-      button.style.cursor = "wait";
-      button.style.opacity = "0.7";
-    } else if (success === true) {
-      button.innerHTML = "✅ Actualisé !";
-      button.style.background =
-        "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)";
-      setTimeout(() => {
-        button.innerHTML = "🔄 Actualiser PLV";
-        button.style.background =
-          "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)";
-        button.style.cursor = "pointer";
-        button.style.opacity = "1";
-      }, 2000);
-    } else if (success === false) {
-      button.innerHTML = "❌ Erreur";
-      button.style.background =
-        "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
-      setTimeout(() => {
-        button.innerHTML = "🔄 Actualiser PLV";
-        button.style.background =
-          "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)";
-        button.style.cursor = "pointer";
-        button.style.opacity = "1";
-      }, 2000);
-    }
-  }
-
-  // ============================================
   // 🖼️ CHARGEMENT TEXTURE
   // ============================================
   function loadSingleTextureAsync(material, imageUrl, opaque = false) {
@@ -173,17 +97,20 @@
             viewer.requestFrame();
             resolve();
           } else {
-            console.error(`❌ Texture creation failed for ${material.name}`);
+            log(`Texture creation failed for ${material.name}`, "error");
             reject(new Error("Texture creation failed"));
           }
         } catch (e) {
-          console.error(`❌ Error applying texture for ${material.name}:`, e);
+          log(
+            `Error applying texture for ${material.name}: ${e.message}`,
+            "error"
+          );
           reject(e);
         }
       };
 
       img.onerror = () => {
-        console.error(`❌ Image load failed: ${imageUrl}`);
+        log(`Image load failed: ${imageUrl}`, "error");
         reject(new Error("Image load failed"));
       };
 
@@ -195,8 +122,13 @@
   // 🚀 CHARGEMENT PRINCIPAL
   // ============================================
   async function loadAllTextures() {
-    console.log(`🚀 Chargement textures PLV (${config.spaceSlug})...`);
-    updateButtonState(true);
+    if (isLoading) {
+      log("Chargement déjà en cours...", "warn");
+      return null;
+    }
+
+    isLoading = true;
+    log(`Chargement textures PLV (${config.spaceSlug})...`);
 
     const textureEntries = Object.entries(config.textures);
     let loadedCount = 0;
@@ -217,11 +149,11 @@
           return loadSingleTextureAsync(material, imageUrl, isOpaque)
             .then(() => {
               loadedCount++;
-              console.log(`✅ ${shaderName} → ${fileName}`);
+              log(`${shaderName} → ${fileName}`, "success");
             })
             .catch(() => errorCount++);
         } else {
-          console.warn(`⚠️ Matériau '${shaderName}' introuvable`);
+          log(`Matériau '${shaderName}' introuvable`, "warn");
           errorCount++;
           return Promise.resolve();
         }
@@ -230,13 +162,19 @@
       await Promise.all(promises);
     }
 
+    isLoading = false;
     const success = errorCount === 0;
-    console.log(
-      `✅ Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`
+    log(
+      `Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`,
+      success ? "success" : "warn"
     );
-    updateButtonState(false, success);
 
-    return { loaded: loadedCount, errors: errorCount, total: totalTextures };
+    return {
+      loaded: loadedCount,
+      errors: errorCount,
+      total: totalTextures,
+      success,
+    };
   }
 
   // ============================================
@@ -245,8 +183,8 @@
 
   // Marquer les matériaux comme éditables
   const materialNames = Object.keys(config.textures);
-  console.log(`🎨 Setting ${materialNames.length} materials as editable...`);
-  console.log(`📡 Source: OVH PHP - Project ${config.spaceSlug}`);
+  log(`Setting ${materialNames.length} materials as editable...`);
+  log(`Source: OVH PHP - Project ${config.spaceSlug}`);
 
   materialNames.forEach((materialName) => {
     viewer.setMaterialEditable(materialName);
@@ -254,27 +192,45 @@
 
   // Au chargement de la scène
   viewer.onSceneLoadComplete(() => {
-    console.log(`🏁 Module AutoTextures PLV prêt`);
-    createReloadButton();
+    log("Module AutoTextures PLV prêt");
     loadAllTextures();
   });
 
   // ============================================
-  // 🌍 API PUBLIQUE
   // ============================================
+  // 🌐 API PUBLIQUE - FONCTIONS GLOBALES
+  // ============================================
+  // ============================================
+
+  /**
+   * ╔════════════════════════════════════════════════════════════╗
+   * ║  🔄 RECHARGER TOUTES LES TEXTURES PLV                      ║
+   * ╠════════════════════════════════════════════════════════════╣
+   * ║  Usage console:    reloadPLVTextures()                     ║
+   * ║  Usage script:     window.reloadPLVTextures()              ║
+   * ║  Retourne:         Promise<{loaded, errors, total}>        ║
+   * ╚════════════════════════════════════════════════════════════╝
+   */
   window.reloadPLVTextures = loadAllTextures;
 
+  /**
+   * API complète pour usage avancé
+   */
   window.atlantisTextures = {
     reload: loadAllTextures,
+    isLoading: () => isLoading,
     getSpaceSlug: () => config.spaceSlug,
     getConfig: () => ({ ...config, textures: { ...config.textures } }),
 
     // Ajouter/modifier un mapping shader → fichier à la volée
     setTexture: (shaderName, fileName) => {
       config.textures[shaderName] = fileName;
-      console.log(`📝 Mapping ajouté: ${shaderName} → ${fileName}`);
+      log(`Mapping ajouté: ${shaderName} → ${fileName}`);
     },
   };
 
-  console.log("🚀 Module AutoTextures OVH initialisé");
+  // ============================================
+  // ============================================
+
+  log("Module AutoTextures OVH initialisé");
 })();

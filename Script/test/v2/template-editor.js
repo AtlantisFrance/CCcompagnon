@@ -4,6 +4,8 @@
  * Atlantis City
  * v2.3 - 2024-12-09 - Super Smooth Updates
  * v2.4 - 2024-12-10 - Ajout template YouTube
+ * v2.5 - 2024-12-10 - Menu déroulant + chargement dynamique des templates
+ * v2.6 - 2024-12-10 - Raccourcis console dynamiques depuis objects-config.js
  * ============================================
  */
 
@@ -18,16 +20,8 @@
       "https://compagnon.atlantis-city.com/Script/test/v2/templates/",
   };
 
-  const TEMPLATE_TYPES = {
-    contact: {
-      name: "Fiche Contact",
-      icon: "📇",
-      description: "Carte avec liens sociaux",
-    },
-    synopsis: { name: "Synopsis", icon: "📜", description: "Texte descriptif" },
-    iframe: { name: "Iframe", icon: "🌐", description: "Site externe" },
-    youtube: { name: "YouTube", icon: "🎬", description: "Vidéo YouTube" },
-  };
+  // Templates disponibles (chargés dynamiquement)
+  let availableTemplates = [];
 
   let state = {
     isOpen: false,
@@ -38,6 +32,7 @@
     isLoading: false,
     isSaving: false,
     templatesLoaded: false,
+    dropdownOpen: false,
   };
 
   // Flag pour éviter double binding
@@ -48,12 +43,15 @@
   // ============================================
   function loadCSS() {
     return new Promise((resolve) => {
-      // Toujours injecter l'animation flash
-      if (!document.getElementById("tpl-flash-animation")) {
+      // Toujours injecter les animations
+      if (!document.getElementById("tpl-custom-animations")) {
         const animStyle = document.createElement("style");
-        animStyle.id = "tpl-flash-animation";
-        animStyle.textContent =
-          "@keyframes tpl-flash{0%{box-shadow:0 0 0 0 rgba(99,102,241,0.8)}50%{box-shadow:0 0 20px 5px rgba(99,102,241,0.5)}100%{box-shadow:0 0 0 0 transparent}}";
+        animStyle.id = "tpl-custom-animations";
+        animStyle.textContent = `
+          @keyframes tpl-flash{0%{box-shadow:0 0 0 0 rgba(99,102,241,0.8)}50%{box-shadow:0 0 20px 5px rgba(99,102,241,0.5)}100%{box-shadow:0 0 0 0 transparent}}
+          @keyframes tpl-dropdown-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+          @keyframes tpl-dropdown-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-8px)}}
+        `;
         document.head.appendChild(animStyle);
       }
 
@@ -106,34 +104,101 @@
       .tpl-btn{padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;border:none;cursor:pointer}
       .tpl-btn-primary{background:#6366f1;color:white}
       .tpl-btn-secondary{background:#1e293b;color:#e2e8f0}
-      @keyframes tpl-flash{0%{box-shadow:0 0 0 0 rgba(99,102,241,0.8)}50%{box-shadow:0 0 20px 5px rgba(99,102,241,0.5)}100%{box-shadow:0 0 0 0 transparent}}
     `;
     document.head.appendChild(style);
   }
 
+  // ============================================
+  // 📋 CHARGEMENT DYNAMIQUE DES TEMPLATES
+  // ============================================
+  async function loadTemplatesList() {
+    try {
+      const res = await fetch(`${CONFIG.apiBase}/popups/list.php`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.templates) {
+          availableTemplates = data.templates;
+          console.log(
+            "✅ Templates disponibles:",
+            availableTemplates.map((t) => t.id)
+          );
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ Impossible de charger la liste des templates:", e);
+    }
+
+    // Fallback : liste statique
+    availableTemplates = [
+      {
+        id: "contact",
+        name: "Fiche Contact",
+        icon: "📇",
+        description: "Carte avec liens sociaux",
+        file: "contact.tpl.js",
+      },
+      {
+        id: "synopsis",
+        name: "Synopsis",
+        icon: "📜",
+        description: "Texte descriptif",
+        file: "synopsis.tpl.js",
+      },
+      {
+        id: "iframe",
+        name: "Iframe",
+        icon: "🌐",
+        description: "Site externe",
+        file: "iframe.tpl.js",
+      },
+      {
+        id: "youtube",
+        name: "Vidéo YouTube",
+        icon: "🎬",
+        description: "Lecteur vidéo",
+        file: "youtube.tpl.js",
+      },
+    ];
+    return false;
+  }
+
   async function loadTemplates() {
     if (state.templatesLoaded) return;
+
+    // D'abord charger la liste
+    await loadTemplatesList();
+
     window.ATLANTIS_TEMPLATES = window.ATLANTIS_TEMPLATES || {};
-    // Liste des templates à charger (incluant YouTube)
-    const templateFiles = [
-      "contact.tpl.js",
-      "synopsis.tpl.js",
-      "iframe.tpl.js",
-      "youtube.tpl.js",
-    ];
-    for (const file of templateFiles) {
+
+    // Charger chaque template
+    for (const tpl of availableTemplates) {
       try {
-        await loadScript(CONFIG.templatesBaseUrl + file);
+        await loadScript(CONFIG.templatesBaseUrl + tpl.file);
+        console.log(`✅ ${tpl.file} chargé`);
       } catch (e) {
-        console.warn(`⚠️ ${file} non chargé`);
+        console.warn(`⚠️ ${tpl.file} non chargé:`, e);
       }
     }
+
     state.templatesLoaded = true;
-    console.log("✅ Templates:", Object.keys(window.ATLANTIS_TEMPLATES));
+    console.log(
+      "✅ Templates chargés:",
+      Object.keys(window.ATLANTIS_TEMPLATES)
+    );
   }
 
   function loadScript(url) {
     return new Promise((resolve, reject) => {
+      // Éviter les doublons
+      const existing = document.querySelector(
+        `script[src^="${url.split("?")[0]}"]`
+      );
+      if (existing) {
+        resolve();
+        return;
+      }
+
       const s = document.createElement("script");
       s.src = url + "?v=" + Date.now();
       s.onload = resolve;
@@ -220,6 +285,7 @@
       isLoading: true,
       isSaving: false,
       templatesLoaded: state.templatesLoaded,
+      dropdownOpen: false,
     };
 
     render();
@@ -245,6 +311,17 @@
   function getDefaultData(type) {
     const tpl = window.ATLANTIS_TEMPLATES?.[type];
     return tpl?.getDefaultData ? tpl.getDefaultData() : { title: "Nouveau" };
+  }
+
+  function getCurrentTemplate() {
+    return (
+      availableTemplates.find((t) => t.id === state.templateType) || {
+        id: state.templateType,
+        name: state.templateType,
+        icon: "📄",
+        description: "",
+      }
+    );
   }
 
   // ============================================
@@ -290,20 +367,11 @@
       .forEach((el) => el.remove());
     eventsInitialized = false;
 
-    const { templateType, isLoading } = state;
+    const { templateType, isLoading, dropdownOpen } = state;
+    const currentTpl = getCurrentTemplate();
 
-    const typeTabs = Object.entries(TEMPLATE_TYPES)
-      .map(
-        ([key, t]) => `
-      <button class="tpl-type-tab ${
-        templateType === key ? "active" : ""
-      }" data-type="${key}">
-        <span class="tpl-type-tab-icon">${t.icon}</span>
-        ${t.name}
-      </button>
-    `
-      )
-      .join("");
+    // Générer le HTML du dropdown
+    const dropdownHTML = renderDropdown(currentTpl, dropdownOpen);
 
     const html = `
       <div class="tpl-editor-overlay">
@@ -318,7 +386,7 @@
             </div>
             
             <div class="tpl-editor-content" id="tpl-editor-content">
-              <div class="tpl-type-tabs">${typeTabs}</div>
+              ${dropdownHTML}
               <div id="tpl-form-content">
                 ${
                   isLoading
@@ -365,10 +433,209 @@
     });
   }
 
+  // ============================================
+  // 🎯 DROPDOWN TEMPLATE SELECTOR
+  // ============================================
+  function renderDropdown(currentTpl, isOpen) {
+    return `
+      <div class="tpl-dropdown-container" style="
+        position: relative;
+        margin-bottom: 20px;
+      ">
+        <!-- Bouton principal -->
+        <button id="tpl-dropdown-trigger" style="
+          width: 100%;
+          padding: 14px 16px;
+          background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.1) 100%);
+          border: 1px solid rgba(99,102,241,0.3);
+          border-radius: 12px;
+          color: #e2e8f0;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          transition: all 0.2s ease;
+          font-family: inherit;
+        " onmouseover="this.style.borderColor='rgba(99,102,241,0.5)';this.style.background='linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.15) 100%)'"
+           onmouseout="this.style.borderColor='rgba(99,102,241,0.3)';this.style.background='linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.1) 100%)'">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="
+              font-size: 20px;
+              width: 36px;
+              height: 36px;
+              background: rgba(99,102,241,0.2);
+              border-radius: 10px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            ">${currentTpl.icon}</span>
+            <div style="text-align:left;">
+              <div style="font-weight:600;color:#f1f5f9;">${
+                currentTpl.name
+              }</div>
+              <div style="font-size:11px;color:#64748b;margin-top:2px;">${
+                currentTpl.description || "Template sélectionné"
+              }</div>
+            </div>
+          </div>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="
+            transition: transform 0.2s ease;
+            transform: rotate(${isOpen ? "180deg" : "0deg"});
+          ">
+            <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        
+        <!-- Menu déroulant -->
+        <div id="tpl-dropdown-menu" style="
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 0;
+          right: 0;
+          background: #1e293b;
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 12px;
+          overflow: hidden;
+          z-index: 100;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+          display: ${isOpen ? "block" : "none"};
+          animation: ${isOpen ? "tpl-dropdown-in 0.2s ease" : "none"};
+        ">
+          <div style="
+            padding: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+          ">
+            ${availableTemplates
+              .map(
+                (tpl) => `
+              <button class="tpl-dropdown-item" data-template-id="${
+                tpl.id
+              }" style="
+                width: 100%;
+                padding: 12px 14px;
+                background: ${
+                  tpl.id === state.templateType
+                    ? "rgba(99,102,241,0.2)"
+                    : "transparent"
+                };
+                border: none;
+                border-radius: 8px;
+                color: #e2e8f0;
+                font-size: 13px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                transition: all 0.15s ease;
+                margin-bottom: 4px;
+                font-family: inherit;
+                text-align: left;
+              " onmouseover="if('${tpl.id}'!=='${
+                  state.templateType
+                }')this.style.background='rgba(255,255,255,0.05)'"
+                 onmouseout="if('${tpl.id}'!=='${
+                  state.templateType
+                }')this.style.background='transparent'">
+                <span style="
+                  font-size: 18px;
+                  width: 32px;
+                  height: 32px;
+                  background: ${
+                    tpl.id === state.templateType
+                      ? "rgba(99,102,241,0.3)"
+                      : "rgba(255,255,255,0.05)"
+                  };
+                  border-radius: 8px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  flex-shrink: 0;
+                ">${tpl.icon}</span>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:500;color:${
+                    tpl.id === state.templateType ? "#a5b4fc" : "#f1f5f9"
+                  };">${tpl.name}</div>
+                  <div style="font-size:11px;color:#64748b;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${
+                    tpl.description || ""
+                  }</div>
+                </div>
+                ${
+                  tpl.id === state.templateType
+                    ? `
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;">
+                    <path d="M13.5 4.5L6 12L2.5 8.5" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                `
+                    : ""
+                }
+              </button>
+            `
+              )
+              .join("")}
+          </div>
+          
+          <!-- Footer avec compteur -->
+          <div style="
+            padding: 10px 14px;
+            background: rgba(0,0,0,0.2);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-size: 11px;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          ">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1.75V12.25M1.75 7H12.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            ${availableTemplates.length} template${
+      availableTemplates.length > 1 ? "s" : ""
+    } disponible${availableTemplates.length > 1 ? "s" : ""}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function toggleDropdown() {
+    state.dropdownOpen = !state.dropdownOpen;
+    const menu = document.getElementById("tpl-dropdown-menu");
+    const trigger = document.getElementById("tpl-dropdown-trigger");
+
+    if (menu && trigger) {
+      menu.style.display = state.dropdownOpen ? "block" : "none";
+      menu.style.animation = state.dropdownOpen
+        ? "tpl-dropdown-in 0.2s ease"
+        : "none";
+      const arrow = trigger.querySelector("svg");
+      if (arrow) {
+        arrow.style.transform = state.dropdownOpen
+          ? "rotate(180deg)"
+          : "rotate(0deg)";
+      }
+    }
+  }
+
+  function closeDropdown() {
+    if (state.dropdownOpen) {
+      state.dropdownOpen = false;
+      const menu = document.getElementById("tpl-dropdown-menu");
+      const trigger = document.getElementById("tpl-dropdown-trigger");
+      if (menu) menu.style.display = "none";
+      if (trigger) {
+        const arrow = trigger.querySelector("svg");
+        if (arrow) arrow.style.transform = "rotate(0deg)";
+      }
+    }
+  }
+
   function renderForm() {
     const tpl = window.ATLANTIS_TEMPLATES?.[state.templateType];
     if (tpl?.renderForm) return tpl.renderForm(state.templateData, helpers);
-    return '<div style="color:#64748b;">Template non disponible</div>';
+    return '<div style="color:#64748b;text-align:center;padding:40px;">⚠️ Template non disponible<br><small>Le fichier du template n\'a pas été chargé</small></div>';
   }
 
   function renderPreview() {
@@ -535,6 +802,44 @@
     const target = e.target;
     const btn = target.closest("button") || target;
 
+    // Dropdown trigger
+    if (
+      btn.id === "tpl-dropdown-trigger" ||
+      btn.closest("#tpl-dropdown-trigger")
+    ) {
+      e.stopPropagation();
+      toggleDropdown();
+      return;
+    }
+
+    // Dropdown item
+    if (
+      btn.classList.contains("tpl-dropdown-item") ||
+      btn.closest(".tpl-dropdown-item")
+    ) {
+      const item = btn.closest(".tpl-dropdown-item") || btn;
+      const newType = item.dataset.templateId;
+      if (newType && newType !== state.templateType) {
+        state.templateType = newType;
+        state.templateData = getDefaultData(newType);
+        state.hasChanges = true;
+        closeDropdown();
+        render();
+      } else {
+        closeDropdown();
+      }
+      return;
+    }
+
+    // Fermer dropdown si clic ailleurs
+    if (
+      state.dropdownOpen &&
+      !target.closest("#tpl-dropdown-menu") &&
+      !target.closest("#tpl-dropdown-trigger")
+    ) {
+      closeDropdown();
+    }
+
     // Close buttons
     if (btn.id === "tpl-close-btn" || btn.id === "tpl-cancel-btn") {
       close();
@@ -544,18 +849,6 @@
     // Save button
     if (btn.id === "tpl-save-btn") {
       save();
-      return;
-    }
-
-    // Type tabs
-    if (btn.classList.contains("tpl-type-tab")) {
-      const newType = btn.dataset.type;
-      if (newType && newType !== state.templateType) {
-        state.templateType = newType;
-        state.templateData = getDefaultData(newType);
-        state.hasChanges = true;
-        render();
-      }
       return;
     }
 
@@ -590,8 +883,12 @@
   }
 
   function handleKeydown(e) {
-    if (e.key === "Escape" && state.isOpen) {
-      close();
+    if (e.key === "Escape") {
+      if (state.dropdownOpen) {
+        closeDropdown();
+      } else if (state.isOpen) {
+        close();
+      }
     }
   }
 
@@ -728,6 +1025,12 @@
     close,
     isOpen: () => state.isOpen,
     getState: () => ({ ...state }),
+    getTemplates: () => [...availableTemplates],
+    reloadTemplates: async () => {
+      state.templatesLoaded = false;
+      await loadTemplates();
+      return availableTemplates;
+    },
     debug: () => console.log("State:", JSON.stringify(state, null, 2)),
   };
 
@@ -745,7 +1048,8 @@
 
     const obj = cfg[objectId];
     if (!obj) {
-      console.error(`❌ Objet "${objectId}" non trouvé`);
+      console.error(`❌ Objet "${objectId}" non trouvé dans objects-config.js`);
+      console.log("📋 Objets disponibles:", Object.keys(cfg).join(", "));
       return false;
     }
 
@@ -770,12 +1074,43 @@
     return true;
   }
 
-  window.c1_openeditor = () => openFor("c1_obj");
-  window.c2_openeditor = () => openFor("c2_obj");
-  window.p1_openeditor = () => openFor("p1_obj");
-  window.l1_openeditor = () => openFor("l1_obj");
-  window.l2_openeditor = () => openFor("l2_obj");
+  // Commande principale : template_edit("objectId")
   window.template_edit = openFor;
 
-  console.log("🎨 Popup Studio Editor v2.4 chargé! (Super Smooth + YouTube)");
+  // Générer dynamiquement les raccourcis depuis objects-config.js
+  // Ex: c1_obj → window.c1_openeditor()
+  function registerDynamicShortcuts() {
+    const cfg = window.ATLANTIS_OBJECTS_CONFIG;
+    if (!cfg) return;
+
+    Object.keys(cfg).forEach((objectId) => {
+      const obj = cfg[objectId];
+      // Seulement si l'objet a le bouton "edit" dans adminButtons
+      if (obj.adminButtons?.includes("edit")) {
+        const shortcutName = `${objectId.replace("_obj", "")}_openeditor`;
+        window[shortcutName] = () => openFor(objectId);
+      }
+    });
+
+    console.log("🔗 Raccourcis éditeur enregistrés depuis objects-config.js");
+  }
+
+  // Enregistrer les raccourcis quand objects-config est prêt
+  if (window.ATLANTIS_OBJECTS_CONFIG) {
+    registerDynamicShortcuts();
+  } else {
+    // Attendre que objects-config soit chargé
+    const checkConfig = setInterval(() => {
+      if (window.ATLANTIS_OBJECTS_CONFIG) {
+        clearInterval(checkConfig);
+        registerDynamicShortcuts();
+      }
+    }, 100);
+    // Timeout après 5s
+    setTimeout(() => clearInterval(checkConfig), 5000);
+  }
+
+  console.log(
+    "🎨 Popup Studio Editor v2.6 chargé! (Dynamic Templates + Dynamic Shortcuts)"
+  );
 })();

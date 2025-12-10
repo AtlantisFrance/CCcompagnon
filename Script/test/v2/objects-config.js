@@ -5,6 +5,7 @@
  * ============================================
  * v1.0 - 2024-12-01 - Version initiale
  * v1.1 - 2024-12-10 - Ajout type "action" + plafond_obj reload_plv
+ * v1.2 - 2024-12-10 - Log conditionnel via perf.js
  * ============================================
  *
  * 📍 L'espace (space) est défini dans body-end.html :
@@ -159,8 +160,13 @@ window.listObjectsByType = function (type) {
     .map(([id]) => id);
 };
 
-console.log(
-  "⚙️ Objects Config chargé:",
-  Object.keys(window.ATLANTIS_OBJECTS_CONFIG).length,
-  "objets"
-);
+// ============================================
+// 📝 LOG CONDITIONNEL
+// ============================================
+if (window.atlantisLog) {
+  window.atlantisLog(
+    "objects-config",
+    "Chargé: " + Object.keys(window.ATLANTIS_OBJECTS_CONFIG).length + " objets",
+    "success"
+  );
+}

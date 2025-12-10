@@ -5,6 +5,7 @@
  * ============================================
  * v1.0 - 2024-12-10 - Création initiale
  * v1.1 - 2024-12-10 - Ajout atlantisLog() centralisé
+ * v1.2 - 2024-12-10 - Ajout atlantisLogGroup() pour logs déroulants
  *
  * INJECTION: Doit être chargé EN PREMIER dans body-end.html
  *
@@ -29,6 +30,27 @@
   const logsHistory = [];
   const MAX_LOGS = 500;
 
+  // Icônes par module
+  const moduleIcons = {
+    autotextures: "🎨",
+    auth: "🔐",
+    "objects-config": "⚙️",
+    "plv-upload": "📤",
+    permissions: "🔑",
+    "template-editor": "✏️",
+    "click-controller": "🖱️",
+    popup: "💬",
+    perf: "⏱️",
+  };
+
+  // Icônes par type
+  const typeIcons = {
+    info: "ℹ️",
+    success: "✅",
+    warn: "⚠️",
+    error: "❌",
+  };
+
   /**
    * ╔════════════════════════════════════════════════════════════╗
    * ║  📝 FONCTION DE LOG CENTRALISÉE                            ║
@@ -49,26 +71,6 @@
     if (logsHistory.length > MAX_LOGS) {
       logsHistory.shift();
     }
-
-    // Icônes par module
-    const moduleIcons = {
-      autotextures: "🎨",
-      auth: "🔐",
-      "objects-config": "⚙️",
-      "plv-upload": "📤",
-      permissions: "🔑",
-      "template-editor": "✏️",
-      "click-controller": "🖱️",
-      perf: "⏱️",
-    };
-
-    // Icônes par type
-    const typeIcons = {
-      info: "ℹ️",
-      success: "✅",
-      warn: "⚠️",
-      error: "❌",
-    };
 
     const moduleIcon = moduleIcons[module] || "📦";
     const typeIcon = typeIcons[type] || "";
@@ -93,8 +95,66 @@
     }
   }
 
+  /**
+   * ╔════════════════════════════════════════════════════════════╗
+   * ║  📋 FONCTION DE LOG GROUPÉ (DÉROULANT)                     ║
+   * ╠════════════════════════════════════════════════════════════╣
+   * ║  Usage: window.atlantisLogGroup(module, title, items, collapsed) ║
+   * ║                                                            ║
+   * ║  items: [{message: "...", type: "success"}, ...]           ║
+   * ║  collapsed: true (défaut) = fermé, false = ouvert          ║
+   * ║                                                            ║
+   * ║  Si perf.js n'est pas chargé → aucun log affiché           ║
+   * ╚════════════════════════════════════════════════════════════╝
+   */
+  function atlantisLogGroup(module, title, items, collapsed = true) {
+    const timestamp = performance.now().toFixed(0);
+    const moduleIcon = moduleIcons[module] || "📦";
+
+    // Stocker le groupe dans l'historique (comme un seul entry)
+    logsHistory.push({
+      timestamp,
+      module,
+      message: `[GROUP] ${title} (${items.length} items)`,
+      type: "info",
+      isGroup: true,
+      items: items,
+    });
+    if (logsHistory.length > MAX_LOGS) {
+      logsHistory.shift();
+    }
+
+    // Afficher le groupe
+    const groupTitle = `${moduleIcon} [${module}] ${title}`;
+    const groupFn = collapsed ? console.groupCollapsed : console.group;
+
+    groupFn(groupTitle);
+
+    items.forEach((item) => {
+      const icon = typeIcons[item.type] || "";
+      const msg = `  ${icon} ${item.message}`;
+
+      switch (item.type) {
+        case "error":
+          console.error(msg);
+          break;
+        case "warn":
+          console.warn(msg);
+          break;
+        case "success":
+          console.log(`%c${msg}`, "color: #22c55e");
+          break;
+        default:
+          console.log(msg);
+      }
+    });
+
+    console.groupEnd();
+  }
+
   // Exposer globalement IMMÉDIATEMENT
   window.atlantisLog = atlantisLog;
+  window.atlantisLogGroup = atlantisLogGroup;
 
   // ============================================
   // ⚙️ CONFIGURATION
@@ -275,7 +335,7 @@
       "╔════════════════════════════════════════════════════════════╗"
     );
     console.log(
-      "║        ⏱️  ATLANTIS CITY - PERFORMANCE MONITOR              ║"
+      "║              ⏱️  PERFORMANCE - ATLANTIS CITY                ║"
     );
     console.log(
       "╠════════════════════════════════════════════════════════════╣"
@@ -511,7 +571,7 @@
    */
   function perfExport() {
     return {
-      version: "1.1",
+      version: "1.2",
       space: window.ATLANTIS_SPACE || "unknown",
       timestamp: new Date().toISOString(),
       totalTime: state.totalTime,
@@ -552,7 +612,7 @@
   // ============================================
   // 🚀 DÉMARRAGE
   // ============================================
-  atlantisLog("perf", "Performance Monitor v1.1 - Surveillance démarrée...");
+  atlantisLog("perf", "Performance Monitor v1.2 - Surveillance démarrée...");
   console.log("📊 Commandes: perf_check() | perf_details() | perf_logs()\n");
 
   // Démarrer la surveillance

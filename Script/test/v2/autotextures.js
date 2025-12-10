@@ -7,6 +7,8 @@
  * v1.0 - 2024-12-01 - Version initiale
  * v1.1 - 2024-12-10 - Suppression bouton, API simplifiée
  * v1.2 - 2024-12-10 - Logs conditionnels via perf.js
+ * v1.3 - 2024-12-10 - Timing par texture + logs groupés
+ * v1.4 - 2024-12-10 - Utilise atlantisLogGroup centralisé
  * ============================================
  */
 
@@ -22,6 +24,12 @@
   const log = (message, type = "info") => {
     if (window.atlantisLog) {
       window.atlantisLog("autotextures", message, type);
+    }
+  };
+
+  const logGroup = (title, items, collapsed = true) => {
+    if (window.atlantisLogGroup) {
+      window.atlantisLogGroup("autotextures", title, items, collapsed);
     }
   };
 
@@ -65,9 +73,11 @@
   let isLoading = false;
 
   // ============================================
-  // 🖼️ CHARGEMENT TEXTURE
+  // 🖼️ CHARGEMENT TEXTURE (avec timing)
   // ============================================
   function loadSingleTextureAsync(material, imageUrl, opaque = false) {
+    const startTime = performance.now();
+
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -95,22 +105,18 @@
             material.roughness = 1;
             material.needsUpdate = true;
             viewer.requestFrame();
-            resolve();
+
+            const elapsed = Math.round(performance.now() - startTime);
+            resolve({ success: true, time: elapsed });
           } else {
-            log(`Texture creation failed for ${material.name}`, "error");
             reject(new Error("Texture creation failed"));
           }
         } catch (e) {
-          log(
-            `Error applying texture for ${material.name}: ${e.message}`,
-            "error"
-          );
           reject(e);
         }
       };
 
       img.onerror = () => {
-        log(`Image load failed: ${imageUrl}`, "error");
         reject(new Error("Image load failed"));
       };
 
@@ -128,12 +134,13 @@
     }
 
     isLoading = true;
-    log(`Chargement textures PLV (${config.spaceSlug})...`);
+    const globalStart = performance.now();
 
     const textureEntries = Object.entries(config.textures);
     let loadedCount = 0;
     let errorCount = 0;
     const totalTextures = textureEntries.length;
+    const results = []; // Pour le log groupé
 
     // Charger par batch
     for (let i = 0; i < totalTextures; i += config.batchSize) {
@@ -147,14 +154,29 @@
           const isOpaque = config.opaqueList.includes(shaderName);
 
           return loadSingleTextureAsync(material, imageUrl, isOpaque)
-            .then(() => {
+            .then((result) => {
               loadedCount++;
-              log(`${shaderName} → ${fileName}`, "success");
+              results.push({
+                type: "success",
+                message: `${shaderName} → ${fileName} (${result.time}ms)`,
+                time: result.time,
+              });
             })
-            .catch(() => errorCount++);
+            .catch((err) => {
+              errorCount++;
+              results.push({
+                type: "error",
+                message: `${shaderName} → ${fileName} - ${err.message}`,
+                time: 0,
+              });
+            });
         } else {
-          log(`Matériau '${shaderName}' introuvable`, "warn");
           errorCount++;
+          results.push({
+            type: "warn",
+            message: `Matériau '${shaderName}' introuvable`,
+            time: 0,
+          });
           return Promise.resolve();
         }
       });
@@ -163,10 +185,48 @@
     }
 
     isLoading = false;
+    const globalTime = Math.round(performance.now() - globalStart);
     const success = errorCount === 0;
-    log(
-      `Terminé: ${loadedCount}/${totalTextures} (${errorCount} erreurs)`,
-      success ? "success" : "warn"
+
+    // Calculer stats
+    const successResults = results.filter((r) => r.type === "success");
+    const avgTime =
+      successResults.length > 0
+        ? Math.round(
+            successResults.reduce((sum, r) => sum + r.time, 0) /
+              successResults.length
+          )
+        : 0;
+    const maxTime =
+      successResults.length > 0
+        ? Math.max(...successResults.map((r) => r.time))
+        : 0;
+    const minTime =
+      successResults.length > 0
+        ? Math.min(...successResults.map((r) => r.time))
+        : 0;
+
+    // Ajouter résumé
+    results.push({
+      type: "info",
+      message: `───────────────────────────────────`,
+    });
+    results.push({
+      type: success ? "success" : "warn",
+      message: `Total: ${loadedCount}/${totalTextures} en ${globalTime}ms`,
+    });
+    if (successResults.length > 0) {
+      results.push({
+        type: "info",
+        message: `Temps: min ${minTime}ms | moy ${avgTime}ms | max ${maxTime}ms`,
+      });
+    }
+
+    // Afficher log groupé
+    logGroup(
+      `Textures PLV (${loadedCount}/${totalTextures}) - ${globalTime}ms`,
+      results,
+      true
     );
 
     return {
@@ -174,6 +234,10 @@
       errors: errorCount,
       total: totalTextures,
       success,
+      totalTime: globalTime,
+      avgTime,
+      minTime,
+      maxTime,
     };
   }
 
@@ -183,8 +247,6 @@
 
   // Marquer les matériaux comme éditables
   const materialNames = Object.keys(config.textures);
-  log(`Setting ${materialNames.length} materials as editable...`);
-  log(`Source: OVH PHP - Project ${config.spaceSlug}`);
 
   materialNames.forEach((materialName) => {
     viewer.setMaterialEditable(materialName);
@@ -192,14 +254,12 @@
 
   // Au chargement de la scène
   viewer.onSceneLoadComplete(() => {
-    log("Module AutoTextures PLV prêt");
+    log("Module prêt - Chargement des textures...", "info");
     loadAllTextures();
   });
 
   // ============================================
-  // ============================================
   // 🌐 API PUBLIQUE - FONCTIONS GLOBALES
-  // ============================================
   // ============================================
 
   /**
@@ -225,12 +285,18 @@
     // Ajouter/modifier un mapping shader → fichier à la volée
     setTexture: (shaderName, fileName) => {
       config.textures[shaderName] = fileName;
-      log(`Mapping ajouté: ${shaderName} → ${fileName}`);
+      log(`Mapping ajouté: ${shaderName} → ${fileName}`, "info");
     },
   };
 
   // ============================================
+  // Log initial
   // ============================================
-
-  log("Module AutoTextures OVH initialisé");
+  if (window.atlantisLog) {
+    window.atlantisLog(
+      "autotextures",
+      `v1.4 initialisé - ${materialNames.length} textures configurées`,
+      "success"
+    );
+  }
 })();

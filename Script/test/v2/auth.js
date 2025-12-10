@@ -3,11 +3,23 @@
  * 🔐 AUTHENTIFICATION ATLANTIS CITY
  * Module d'authentification pour Shapespark
  * ============================================
+ * v1.0 - 2024-12-01 - Version initiale
+ * v1.1 - 2024-12-10 - Logs conditionnels via perf.js
+ * ============================================
  */
 
 (function () {
   if (window.__atlantisAuthInitialized) return;
   window.__atlantisAuthInitialized = true;
+
+  // ============================================
+  // 📝 LOG CONDITIONNEL
+  // ============================================
+  const log = (message, type = "info") => {
+    if (window.atlantisLog) {
+      window.atlantisLog("auth", message, type);
+    }
+  };
 
   // === CONFIGURATION ===
   const AUTH_CONFIG = {
@@ -23,7 +35,7 @@
 
   // === INIT ===
   function init() {
-    console.log("🔐 Atlantis Auth: Initialisation...");
+    log("Initialisation...", "info");
 
     // Charger le token sauvegardé
     loadStoredAuth();
@@ -36,7 +48,7 @@
       checkAuth();
     }
 
-    console.log("✅ Atlantis Auth: Prêt");
+    log("Module prêt", "success");
   }
 
   // === STORAGE ===
@@ -46,9 +58,10 @@
       const storedUser = localStorage.getItem(AUTH_CONFIG.userKey);
       if (storedUser) {
         currentUser = JSON.parse(storedUser);
+        log("Session restaurée: " + currentUser.email, "success");
       }
     } catch (e) {
-      console.warn("Atlantis Auth: Erreur lecture storage", e);
+      log("Erreur lecture storage: " + e.message, "warn");
     }
   }
 
@@ -59,7 +72,7 @@
       localStorage.setItem(AUTH_CONFIG.tokenKey, token);
       localStorage.setItem(AUTH_CONFIG.userKey, JSON.stringify(user));
     } catch (e) {
-      console.warn("Atlantis Auth: Erreur sauvegarde storage", e);
+      log("Erreur sauvegarde storage: " + e.message, "warn");
     }
   }
 
@@ -70,7 +83,7 @@
       localStorage.removeItem(AUTH_CONFIG.tokenKey);
       localStorage.removeItem(AUTH_CONFIG.userKey);
     } catch (e) {
-      console.warn("Atlantis Auth: Erreur suppression storage", e);
+      log("Erreur suppression storage: " + e.message, "warn");
     }
   }
 
@@ -96,7 +109,7 @@
       const json = await response.json();
       return { status: response.status, ...json };
     } catch (error) {
-      console.error("Atlantis Auth: Erreur API", error);
+      log("Erreur API: " + error.message, "error");
       return { success: false, error: "Erreur de connexion au serveur" };
     }
   }
@@ -108,13 +121,17 @@
       currentUser = result.data.user;
       saveAuth(authToken, currentUser);
       updateAuthButton();
+      log("Token valide: " + currentUser.email, "success");
     } else {
       clearAuth();
       updateAuthButton();
+      log("Token invalide ou expiré", "warn");
     }
   }
 
   async function login(email, password) {
+    log("Tentative connexion: " + email, "info");
+
     const result = await apiCall("/auth/login.php", "POST", {
       email,
       password,
@@ -125,16 +142,21 @@
       updateAuthButton();
       closeAuthPopup();
       showNotification("Connexion réussie !", "success");
+      log("Connexion réussie: " + email, "success");
       return { success: true };
     }
 
+    log("Échec connexion: " + (result.error || "Erreur inconnue"), "warn");
     return { success: false, error: result.error || "Erreur de connexion" };
   }
 
   async function register(data) {
+    log("Tentative inscription: " + data.email, "info");
+
     const result = await apiCall("/auth/register.php", "POST", data);
 
     if (result.success) {
+      log("Inscription réussie: " + data.email, "success");
       return {
         success: true,
         message:
@@ -143,6 +165,7 @@
       };
     }
 
+    log("Échec inscription: " + (result.error || "Erreur inconnue"), "warn");
     return { success: false, error: result.error || "Erreur d'inscription" };
   }
 
@@ -154,6 +177,8 @@
       closeUserMenu();
       return;
     }
+
+    const userEmail = currentUser?.email || "unknown";
 
     // Sauvegarder et effacer le token avant l'appel API
     const tokenToInvalidate = authToken;
@@ -175,6 +200,7 @@
     }
 
     showNotification("Déconnexion réussie", "success");
+    log("Déconnexion: " + userEmail, "success");
   }
 
   // === UI: AUTH BUTTON ===
@@ -270,41 +296,41 @@
          <div class="auth-message" id="auth-message"></div>
 
          <!-- Login Form -->
-         <form class="auth-form active" id="auth-login-form">
+         <form class="auth-form active" id="login-form">
            <div class="auth-input-group">
              <label class="auth-label" for="login-email">Email</label>
-             <input type="email" class="auth-input" id="login-email" placeholder="votre@email.com" required>
+             <input type="email" class="auth-input" id="login-email" name="email" placeholder="votre@email.com" autocomplete="email" required>
            </div>
            <div class="auth-input-group">
              <label class="auth-label" for="login-password">Mot de passe</label>
-             <input type="password" class="auth-input" id="login-password" placeholder="••••••••" required>
+             <input type="password" class="auth-input" id="login-password" name="password" placeholder="••••••••" autocomplete="current-password" required>
            </div>
            <button type="submit" class="auth-submit">Se connecter</button>
          </form>
 
          <!-- Register Form -->
-         <form class="auth-form" id="auth-register-form">
+         <form class="auth-form" id="register-form">
            <div class="auth-input-row">
              <div class="auth-input-group">
-               <label class="auth-label" for="register-first-name">Prénom</label>
-               <input type="text" class="auth-input" id="register-first-name" placeholder="Jean" required>
+               <label class="auth-label" for="register-first-name">Prénom *</label>
+               <input type="text" class="auth-input" id="register-first-name" name="first_name" placeholder="Jean" autocomplete="given-name" required>
              </div>
              <div class="auth-input-group">
-               <label class="auth-label" for="register-last-name">Nom</label>
-               <input type="text" class="auth-input" id="register-last-name" placeholder="Dupont" required>
+               <label class="auth-label" for="register-last-name">Nom *</label>
+               <input type="text" class="auth-input" id="register-last-name" name="last_name" placeholder="Dupont" autocomplete="family-name" required>
              </div>
            </div>
            <div class="auth-input-group">
-             <label class="auth-label" for="register-email">Email</label>
-             <input type="email" class="auth-input" id="register-email" placeholder="votre@email.com" required>
+             <label class="auth-label" for="register-email">Email *</label>
+             <input type="email" class="auth-input" id="register-email" name="email" placeholder="votre@email.com" autocomplete="email" required>
            </div>
            <div class="auth-input-group">
-             <label class="auth-label" for="register-company">Société (optionnel)</label>
-             <input type="text" class="auth-input" id="register-company" placeholder="Ma Société">
+             <label class="auth-label" for="register-password">Mot de passe *</label>
+             <input type="password" class="auth-input" id="register-password" name="password" placeholder="Min. 6 caractères" autocomplete="new-password" required>
            </div>
            <div class="auth-input-group">
-             <label class="auth-label" for="register-password">Mot de passe</label>
-             <input type="password" class="auth-input" id="register-password" placeholder="6 caractères minimum" minlength="6" required>
+             <label class="auth-label" for="register-company">Entreprise</label>
+             <input type="text" class="auth-input" id="register-company" name="company" placeholder="Optionnel" autocomplete="organization">
            </div>
            <button type="submit" class="auth-submit">Créer mon compte</button>
          </form>
@@ -314,63 +340,61 @@
 
     document.body.appendChild(overlay);
 
-    // ✅ FIX 2: Attacher les événements après que le DOM soit prêt
-    // Bouton fermer
-    document.getElementById("auth-close-btn").addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeAuthPopup();
-    });
-
-    // Tab switching
-    overlay.querySelectorAll(".auth-tab").forEach((tab) => {
-      tab.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        switchTab(tab.dataset.tab);
-      });
-    });
-
-    // ✅ FIX 3: Form submissions avec IDs au lieu de name attributes
+    // Attacher événements
     document
-      .getElementById("auth-login-form")
+      .getElementById("auth-close-btn")
+      .addEventListener("click", closeAuthPopup);
+
+    // Onglets
+    document.querySelectorAll(".auth-tab").forEach((tab) => {
+      tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+    });
+
+    // Forms
+    document
+      .getElementById("login-form")
       .addEventListener("submit", handleLogin);
     document
-      .getElementById("auth-register-form")
+      .getElementById("register-form")
       .addEventListener("submit", handleRegister);
 
-    // Empêcher la fermeture quand on clique sur les inputs
-    overlay.querySelectorAll(".auth-input").forEach((input) => {
-      input.addEventListener("click", (e) => {
-        e.stopPropagation();
-      });
-    });
+    // Escape pour fermer
+    document.addEventListener("keydown", handleEscape);
   }
 
   function closeAuthPopup() {
     const overlay = document.getElementById("atlantis-auth-overlay");
     if (overlay) {
-      overlay.remove();
+      overlay.style.opacity = "0";
+      setTimeout(() => overlay.remove(), 300);
+    }
+    document.removeEventListener("keydown", handleEscape);
+  }
+
+  function handleEscape(e) {
+    if (e.key === "Escape") {
+      closeAuthPopup();
     }
   }
 
   function switchTab(tabName) {
-    // Update tabs
+    // Onglets
     document.querySelectorAll(".auth-tab").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.tab === tabName);
     });
 
-    // Update forms
-    document.querySelectorAll(".auth-form").forEach((form) => {
-      form.classList.remove("active");
-    });
-    document.getElementById(`auth-${tabName}-form`).classList.add("active");
+    // Forms
+    document
+      .getElementById("login-form")
+      .classList.toggle("active", tabName === "login");
+    document
+      .getElementById("register-form")
+      .classList.toggle("active", tabName === "register");
 
-    // Clear message
     hideMessage();
   }
 
-  function showMessage(text, type = "error") {
+  function showMessage(text, type) {
     const msg = document.getElementById("auth-message");
     if (msg) {
       msg.textContent = text;
@@ -626,7 +650,7 @@
     closePopup: closeAuthPopup,
     openProfile: () => {
       closeUserMenu();
-      console.log("TODO: Ouvrir profil");
+      log("TODO: Ouvrir profil", "info");
       showNotification("Profil - Bientôt disponible", "success");
     },
     openAdmin: () => {
@@ -641,5 +665,10 @@
     document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
+  }
+
+  // Log de démarrage conditionnel
+  if (window.atlantisLog) {
+    window.atlantisLog("auth", "v1.1 chargé", "success");
   }
 })();

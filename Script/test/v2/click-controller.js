@@ -5,6 +5,9 @@
  * ============================================
  * v1.0 - 2024-12-01 - Version initiale
  * v1.1 - 2024-12-10 - Ajout action "reload_plv"
+ * v1.2 - 2024-12-10 - Fix boutons admin (sélecteur corrigé)
+ * v1.3 - 2024-12-10 - Logs conditionnels via perf.js
+ * v1.7 - 2024-12-10 - Logs groupés (loadAllPopups uniquement)
  * ============================================
  *
  * 🧪 COMMANDES CONSOLE:
@@ -17,6 +20,21 @@
 
 (function () {
   "use strict";
+
+  // ============================================
+  // 📝 LOG CONDITIONNEL
+  // ============================================
+  const log = (message, type = "info") => {
+    if (window.atlantisLog) {
+      window.atlantisLog("click-controller", message, type);
+    }
+  };
+
+  const logGroup = (title, items, collapsed = true) => {
+    if (window.atlantisLogGroup) {
+      window.atlantisLogGroup("click-controller", title, items, collapsed);
+    }
+  };
 
   // ============================================
   // 🔍 VÉRIFICATION DÉPENDANCES
@@ -65,22 +83,27 @@
     try {
       const response = await fetch(manifestUrl);
       if (!response.ok) {
-        console.log("ℹ️ Pas de manifest trouvé pour", spaceSlug);
+        log("Pas de manifest trouvé pour " + spaceSlug, "info");
         return null;
       }
       manifest = await response.json();
-      console.log(
-        "📋 Manifest chargé:",
-        Object.keys(manifest.popups || {}).length,
-        "popups"
+      log(
+        "Manifest chargé: " +
+          Object.keys(manifest.popups || {}).length +
+          " popups",
+        "success"
       );
       return manifest;
     } catch (err) {
-      console.warn("⚠️ Erreur chargement manifest:", err);
+      log("Erreur chargement manifest: " + err, "warn");
       return null;
     }
   }
 
+  /**
+   * Charge un script popup
+   * @returns {Promise<boolean>} true si chargé, false sinon
+   */
   async function loadPopupScript(popupId) {
     const spaceSlug = window.ATLANTIS_SPACE || "default";
     const scriptUrl = `${
@@ -99,31 +122,125 @@
       script.src = scriptUrl;
       script.onload = () => {
         loadedPopups[popupId] = true;
-        console.log(`✅ Popup ${popupId} chargée`);
+        log("Popup " + popupId + " chargée", "success");
         resolve(true);
       };
       script.onerror = () => {
-        console.warn(`⚠️ Popup ${popupId} non trouvée`);
+        log("Popup " + popupId + " non trouvée", "warn");
         resolve(false);
       };
       document.head.appendChild(script);
     });
   }
 
+  /**
+   * Version interne pour batch loading avec timing
+   */
+  async function loadPopupScriptWithTiming(popupId) {
+    const spaceSlug = window.ATLANTIS_SPACE || "default";
+    const startTime = performance.now();
+    const scriptUrl = `${
+      POPUP_CONFIG.baseUrl
+    }/${spaceSlug}/${popupId}-popup.js?v=${Date.now()}`;
+
+    return new Promise((resolve) => {
+      // Vérifier si déjà chargé
+      if (window.atlantisPopups && window.atlantisPopups[popupId]) {
+        loadedPopups[popupId] = true;
+        resolve({ id: popupId, success: true, cached: true, time: 0 });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = scriptUrl;
+      script.onload = () => {
+        loadedPopups[popupId] = true;
+        const elapsed = Math.round(performance.now() - startTime);
+        resolve({ id: popupId, success: true, cached: false, time: elapsed });
+      };
+      script.onerror = () => {
+        const elapsed = Math.round(performance.now() - startTime);
+        resolve({ id: popupId, success: false, cached: false, time: elapsed });
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Charge toutes les popups avec log groupé
+   */
   async function loadAllPopups() {
     if (!manifest || !manifest.popups) {
-      console.log("ℹ️ Aucune popup à charger");
+      log("Aucune popup à charger", "info");
       return;
     }
 
     const popupIds = Object.keys(manifest.popups);
-    console.log(`🚀 Chargement de ${popupIds.length} popups...`);
+    const totalCount = popupIds.length;
 
-    for (const popupId of popupIds) {
-      await loadPopupScript(popupId);
+    if (totalCount === 0) {
+      log("Aucune popup dans le manifest", "info");
+      return;
     }
 
-    console.log("✅ Toutes les popups sont chargées");
+    const globalStart = performance.now();
+    const results = [];
+
+    // Charger toutes les popups avec timing
+    for (const popupId of popupIds) {
+      const result = await loadPopupScriptWithTiming(popupId);
+      results.push(result);
+    }
+
+    const globalTime = Math.round(performance.now() - globalStart);
+
+    // Compter succès/échecs
+    const successCount = results.filter((r) => r.success).length;
+    const failedCount = results.filter((r) => !r.success).length;
+    const cachedCount = results.filter((r) => r.cached).length;
+
+    // Construire les items pour le log groupé
+    const logItems = results.map((r) => {
+      if (r.cached) {
+        return { message: `${r.id} (cache)`, type: "info" };
+      } else if (r.success) {
+        return { message: `${r.id} (${r.time}ms)`, type: "success" };
+      } else {
+        return { message: `${r.id} - non trouvée`, type: "warn" };
+      }
+    });
+
+    // Ajouter le résumé
+    logItems.push({
+      message: `───────────────────────────────────`,
+      type: "info",
+    });
+
+    if (failedCount === 0) {
+      logItems.push({
+        message: `Total: ${successCount}/${totalCount} en ${globalTime}ms`,
+        type: "success",
+      });
+    } else {
+      logItems.push({
+        message: `Total: ${successCount}/${totalCount} (${failedCount} échecs) en ${globalTime}ms`,
+        type: "warn",
+      });
+    }
+
+    if (cachedCount > 0) {
+      logItems.push({
+        message: `${cachedCount} popup(s) en cache`,
+        type: "info",
+      });
+    }
+
+    // Afficher le log groupé
+    logGroup(
+      `Popups (${successCount}/${totalCount}) - ${globalTime}ms`,
+      logItems,
+      true
+    );
   }
 
   // ============================================
@@ -150,7 +267,7 @@
   function setupClickHandlers() {
     // Attendre que Shapespark soit prêt
     if (typeof WALK === "undefined" || !WALK.getViewer) {
-      console.warn("⚠️ WALK non disponible, réessai dans 1s...");
+      log("WALK non disponible, réessai dans 1s...", "warn");
       setTimeout(setupClickHandlers, 1000);
       return;
     }
@@ -159,7 +276,7 @@
 
     // Attendre que la scène soit chargée
     viewer.onSceneLoadComplete(function () {
-      console.log("🎯 Configuration des triggers click-controller");
+      log("Configuration des triggers", "info");
 
       // Gestionnaire de clics
       viewer.onNodeTypeClicked(function (node) {
@@ -172,7 +289,7 @@
         return handleNodeClick(objectName, node);
       });
 
-      console.log("🖱️ Click Controller activé");
+      log("Click Controller activé", "success");
     });
   }
 
@@ -181,9 +298,9 @@
     const cleanName = cleanNodeName(nodeName);
 
     if (cleanName !== nodeName) {
-      console.log("🖱️ Clic:", nodeName, "→", cleanName);
+      log("Clic: " + nodeName + " → " + cleanName, "info");
     } else {
-      console.log("🖱️ Clic:", cleanName);
+      log("Clic: " + cleanName, "info");
     }
 
     // Récupérer la config de l'objet
@@ -223,9 +340,7 @@
   }
 
   // ============================================
-  // ============================================
   // ⚡ EXÉCUTION DES ACTIONS
-  // ============================================
   // ============================================
 
   /**
@@ -288,7 +403,7 @@
       // ⚠️ ACTION INCONNUE
       // ─────────────────────────────────────────
       default:
-        console.warn("⚠️ Action inconnue:", onClick);
+        log("Action inconnue: " + onClick, "warn");
         return false;
     }
   }
@@ -302,15 +417,13 @@
    * Utilise la fonction globale de autotextures.js
    */
   function handleReloadPLVAction(objectId) {
-    console.log("🔄 Action reload_plv déclenchée par:", objectId);
+    log("Action reload_plv déclenchée par: " + objectId, "info");
 
     if (typeof window.reloadPLVTextures === "function") {
       window.reloadPLVTextures();
-      console.log("✅ Rechargement des textures lancé");
+      log("Rechargement des textures lancé", "success");
     } else {
-      console.error(
-        "❌ reloadPLVTextures non disponible (autotextures.js chargé ?)"
-      );
+      log("reloadPLVTextures non disponible", "error");
     }
   }
 
@@ -339,7 +452,7 @@
           // Admin → montrer popup par défaut
           showDefaultAdminPopup(objectId, config);
         } else {
-          console.log("ℹ️ Pas de popup configurée pour:", objectId);
+          log("Pas de popup configurée pour: " + objectId, "info");
         }
       }
     });
@@ -356,7 +469,7 @@
     const access = PERMISSIONS.checkObjectAccess(objectId);
 
     if (!access.canUpload) {
-      console.warn("⛔ Pas de permission d'upload pour:", objectId);
+      log("Pas de permission d'upload pour: " + objectId, "warn");
       return;
     }
 
@@ -364,286 +477,140 @@
   }
 
   // ============================================
-  // 🎨 AFFICHAGE POPUP AVEC BOUTONS ADMIN
+  // 🎯 AFFICHAGE POPUP + BOUTONS ADMIN
   // ============================================
 
   function showPopupWithAdminButtons(objectId, config) {
-    // Afficher la popup
-    if (window.atlantisPopups && window.atlantisPopups[objectId]) {
-      window.atlantisPopups[objectId].show();
+    const popup = window.atlantisPopups[objectId];
+    if (!popup || !popup.show) {
+      log("Popup invalide: " + objectId, "error");
+      return;
+    }
 
-      // Vérifier si on doit ajouter les boutons admin
-      const access = PERMISSIONS.checkObjectAccess(objectId);
-      if (access.canEdit || access.canUpload) {
-        addAdminButtonsToPopup(objectId, config, access);
-      }
+    // Afficher la popup
+    popup.show();
+
+    // Vérifier les droits et ajouter les boutons admin
+    const access = PERMISSIONS.checkObjectAccess(objectId);
+
+    if (access.canEdit || access.canUpload) {
+      setTimeout(() => {
+        addAdminButtons(objectId, config, access);
+      }, 100);
     }
   }
 
-  function addAdminButtonsToPopup(objectId, config, access) {
-    // Attendre que la popup soit dans le DOM
-    setTimeout(() => {
-      // Chercher le container de la popup
-      const popupOverlay = document.querySelector(
-        `.atlantis-popup-overlay[data-popup-id="${objectId}"]`
-      );
-      if (!popupOverlay) return;
+  function addAdminButtons(objectId, config, access) {
+    // Trouver l'overlay de la popup (sélecteur flexible)
+    const overlay = document.querySelector(
+      `[class*="popup-${objectId}-overlay"]`
+    );
+    if (!overlay) return;
 
-      // Vérifier si boutons déjà ajoutés
-      if (popupOverlay.querySelector(".atlantis-admin-buttons")) return;
+    // Vérifier si les boutons existent déjà
+    if (overlay.querySelector(".admin-buttons-container")) return;
 
-      // Récupérer les boutons autorisés depuis la config
-      const allowedButtons = config?.adminButtons || ["edit"];
+    // Récupérer les boutons autorisés depuis la config
+    const adminButtons = config?.adminButtons || [];
 
-      // Créer le container des boutons
-      const buttonsContainer = document.createElement("div");
-      buttonsContainer.className = "atlantis-admin-buttons";
-      buttonsContainer.style.cssText = `
-        position: absolute;
-        top: 10px;
-        right: 50px;
-        display: flex;
-        gap: 8px;
-        z-index: 10001;
-      `;
+    // Créer le conteneur
+    const container = document.createElement("div");
+    container.className = "admin-buttons-container";
 
-      // Bouton Éditer
-      if (access.canEdit && allowedButtons.includes("edit")) {
-        const editBtn = document.createElement("button");
-        editBtn.innerHTML = "🎨 Éditer";
-        editBtn.style.cssText = `
-          padding: 8px 16px;
-          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-          color: white;
-          border: none;
-          border-radius: 20px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 600;
-          box-shadow: 0 2px 10px rgba(139, 92, 246, 0.3);
-          transition: all 0.2s ease;
-        `;
-        editBtn.addEventListener("mouseenter", () => {
-          editBtn.style.transform = "translateY(-2px)";
-          editBtn.style.boxShadow = "0 4px 15px rgba(139, 92, 246, 0.4)";
-        });
-        editBtn.addEventListener("mouseleave", () => {
-          editBtn.style.transform = "translateY(0)";
-          editBtn.style.boxShadow = "0 2px 10px rgba(139, 92, 246, 0.3)";
-        });
-        editBtn.addEventListener("click", () => {
-          closePopup(objectId);
-          openTemplateEditor(objectId);
-        });
-        buttonsContainer.appendChild(editBtn);
-      }
+    // Bouton Éditer (si autorisé et permission OK)
+    if (adminButtons.includes("edit") && access.canEdit) {
+      const editBtn = document.createElement("button");
+      editBtn.className = "admin-btn admin-btn-edit";
+      editBtn.innerHTML = "🎨 Éditer Template";
+      editBtn.onclick = () => {
+        closePopup(objectId);
+        openTemplateEditor(objectId);
+      };
+      container.appendChild(editBtn);
+    }
 
-      // Bouton Upload
-      if (access.canUpload && allowedButtons.includes("upload")) {
-        const uploadBtn = document.createElement("button");
-        uploadBtn.innerHTML = "📤 Upload";
-        uploadBtn.style.cssText = `
-          padding: 8px 16px;
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
-          color: white;
-          border: none;
-          border-radius: 20px;
-          cursor: pointer;
-          font-size: 14px;
-          font-weight: 600;
-          box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
-          transition: all 0.2s ease;
-        `;
-        uploadBtn.addEventListener("mouseenter", () => {
-          uploadBtn.style.transform = "translateY(-2px)";
-          uploadBtn.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.4)";
-        });
-        uploadBtn.addEventListener("mouseleave", () => {
-          uploadBtn.style.transform = "translateY(0)";
-          uploadBtn.style.boxShadow = "0 2px 10px rgba(59, 130, 246, 0.3)";
-        });
-        uploadBtn.addEventListener("click", () => {
-          closePopup(objectId);
-          openUploadModal(objectId, config);
-        });
-        buttonsContainer.appendChild(uploadBtn);
-      }
+    // Bouton Upload (si autorisé et permission OK)
+    if (adminButtons.includes("upload") && access.canUpload) {
+      const uploadBtn = document.createElement("button");
+      uploadBtn.className = "admin-btn admin-btn-upload";
+      uploadBtn.innerHTML = "📤 Upload PLV";
+      uploadBtn.onclick = () => {
+        closePopup(objectId);
+        openUploadModal(objectId, config);
+      };
+      container.appendChild(uploadBtn);
+    }
 
-      // Ajouter au popup
-      const popupContainer = popupOverlay.querySelector(
-        ".atlantis-popup-container"
-      );
-      if (popupContainer) {
-        popupContainer.style.position = "relative";
-        popupContainer.appendChild(buttonsContainer);
-      }
-    }, 100);
+    // Ajouter seulement si on a des boutons
+    if (container.children.length > 0) {
+      overlay.appendChild(container);
+    }
   }
 
   // ============================================
-  // 🆕 POPUP PAR DÉFAUT (ADMIN)
+  // ✨ POPUP PAR DÉFAUT ADMIN
   // ============================================
 
   function showDefaultAdminPopup(objectId, config) {
     // Fermer si déjà ouverte
-    closeDefaultAdminPopup();
+    if (currentDefaultPopup) {
+      closeDefaultAdminPopup();
+      return;
+    }
 
     const access = PERMISSIONS.checkObjectAccess(objectId);
-    const allowedButtons = config?.adminButtons || ["edit"];
-
-    // Construire les boutons
-    let buttonsHTML = "";
-
-    if (access.canEdit && allowedButtons.includes("edit")) {
-      buttonsHTML += `
-        <button class="atlantis-default-popup-btn atlantis-default-popup-btn-edit" data-action="edit">
-          🎨 Créer le contenu
-        </button>
-      `;
-    }
-
-    if (access.canUpload && allowedButtons.includes("upload")) {
-      buttonsHTML += `
-        <button class="atlantis-default-popup-btn atlantis-default-popup-btn-upload" data-action="upload">
-          📤 Uploader une image
-        </button>
-      `;
-    }
+    const adminButtons = config?.adminButtons || [];
 
     // Créer l'overlay
     const overlay = document.createElement("div");
     overlay.className = "atlantis-default-popup-overlay";
+
+    // Générer les boutons selon la config
+    let buttonsHTML = "";
+
+    if (adminButtons.includes("edit") && access.canEdit) {
+      buttonsHTML += `
+        <button class="atlantis-default-popup-btn atlantis-default-popup-btn-editor" data-action="edit">
+          <span class="atlantis-default-popup-btn-icon">🎨</span>
+          <span class="atlantis-default-popup-btn-text">
+            <strong>Créer une Popup</strong>
+            <small>Fiche contact, synopsis, iframe...</small>
+          </span>
+        </button>
+      `;
+    }
+
+    if (adminButtons.includes("upload") && access.canUpload) {
+      buttonsHTML += `
+        <button class="atlantis-default-popup-btn atlantis-default-popup-btn-upload" data-action="upload">
+          <span class="atlantis-default-popup-btn-icon">📤</span>
+          <span class="atlantis-default-popup-btn-text">
+            <strong>Upload Texture PLV</strong>
+            <small>Remplacer l'image affichée</small>
+          </span>
+        </button>
+      `;
+    }
+
+    // Si aucun bouton disponible, ne pas afficher
+    if (!buttonsHTML) {
+      log("Aucune action admin disponible pour: " + objectId, "info");
+      return;
+    }
+
     overlay.innerHTML = `
-      <style>
-        .atlantis-default-popup-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100000;
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-        .atlantis-default-popup-overlay.active {
-          opacity: 1;
-        }
-        .atlantis-default-popup-container {
-          background: linear-gradient(145deg, #1e293b, #0f172a);
-          border-radius: 16px;
-          padding: 32px;
-          max-width: 450px;
-          width: 90%;
-          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          transform: translateY(20px);
-          transition: transform 0.3s ease;
-        }
-        .atlantis-default-popup-overlay.active .atlantis-default-popup-container {
-          transform: translateY(0);
-        }
-        .atlantis-default-popup-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-          padding-bottom: 16px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .atlantis-default-popup-title {
-          color: #f1f5f9;
-          font-size: 20px;
-          font-weight: 600;
-          margin: 0;
-        }
-        .atlantis-default-popup-close {
-          background: rgba(255, 255, 255, 0.1);
-          border: none;
-          color: #94a3b8;
-          font-size: 24px;
-          cursor: pointer;
-          padding: 4px 12px;
-          border-radius: 8px;
-          transition: all 0.2s ease;
-        }
-        .atlantis-default-popup-close:hover {
-          background: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
-        }
-        .atlantis-default-popup-badge {
-          display: inline-block;
-          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-          color: white;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
-        .atlantis-default-popup-message {
-          color: #94a3b8;
-          font-size: 15px;
-          line-height: 1.6;
-          margin-bottom: 24px;
-        }
-        .atlantis-default-popup-actions {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .atlantis-default-popup-btn {
-          padding: 14px 24px;
-          border: none;
-          border-radius: 12px;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-        }
-        .atlantis-default-popup-btn-edit {
-          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-          color: white;
-        }
-        .atlantis-default-popup-btn-edit:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
-        }
-        .atlantis-default-popup-btn-upload {
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
-          color: white;
-        }
-        .atlantis-default-popup-btn-upload:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
-        }
-        .atlantis-default-popup-footer {
-          margin-top: 24px;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-          text-align: center;
-        }
-        .atlantis-default-popup-hint {
-          color: #64748b;
-          font-size: 13px;
-        }
-      </style>
-      
-      <div class="atlantis-default-popup-container">
+      <div class="atlantis-default-popup">
         <div class="atlantis-default-popup-header">
-          <h3 class="atlantis-default-popup-title">📦 ${objectId}</h3>
-          <button class="atlantis-default-popup-close">×</button>
+          <div class="atlantis-default-popup-icon">⚙️</div>
+          <h2 class="atlantis-default-popup-title">Configuration requise</h2>
+          <button class="atlantis-default-popup-close">✕</button>
         </div>
         
-        <div class="atlantis-default-popup-content">
-          <span class="atlantis-default-popup-badge">🔐 Mode Admin</span>
+        <div class="atlantis-default-popup-body">
+          <div class="atlantis-default-popup-object">
+            <span class="atlantis-default-popup-label">Objet sélectionné</span>
+            <span class="atlantis-default-popup-value">${objectId}</span>
+          </div>
           
           <p class="atlantis-default-popup-message">
             Aucun contenu n'est encore configuré pour cet objet.<br>
@@ -792,7 +759,7 @@
     script.src = `${
       POPUP_CONFIG.baseUrl
     }/${spaceSlug}/${popupId}-popup.js?v=${Date.now()}`;
-    script.onload = () => console.log(`🔄 Popup ${popupId} rechargée`);
+    script.onload = () => log("Popup " + popupId + " rechargée", "success");
     document.head.appendChild(script);
   };
 
@@ -804,22 +771,22 @@
     if (isInitialized) return;
     isInitialized = true;
 
-    console.log("🚀 Click Controller - Initialisation...");
+    log("Initialisation...", "info");
 
     // 1. Charger le manifest
     await loadManifest();
 
-    // 2. Charger toutes les popups
+    // 2. Charger toutes les popups (avec log groupé)
     await loadAllPopups();
 
     // 3. Setup des gestionnaires de clics
     setupClickHandlers();
 
-    console.log("✅ Click Controller prêt!");
+    log("Click Controller prêt!", "success");
   }
 
   // ============================================
-  // 🧪 COMMANDES CONSOLE
+  // 🧪 COMMANDES CONSOLE (gardent console.log)
   // ============================================
 
   window.popup_show = function (objectId) {
@@ -901,22 +868,12 @@
     setTimeout(init, 500);
   }
 
-  console.log(`
-🖱️ Click Controller v1.1 chargé!
-
-📋 COMMANDES:
-   popup_show("c1_obj")  → Affiche une popup
-   popup_list()          → Liste les popups
-   popup_reload()        → Recharge tout
-   popup_debug()         → Voir noms des objets cliqués
-
-⚡ ACTIONS DISPONIBLES:
-   - popup       → Affiche popup
-   - upload      → Modal upload (admin)
-   - url         → Lien externe
-   - reload_plv  → Recharge textures PLV
-
-⚙️ CONFIG:
-   ${Object.keys(CONFIG).length} objets configurés
-`);
+  // Log de démarrage conditionnel
+  if (window.atlantisLog) {
+    window.atlantisLog(
+      "click-controller",
+      "v1.7 chargé - " + Object.keys(CONFIG).length + " objets configurés",
+      "success"
+    );
+  }
 })();

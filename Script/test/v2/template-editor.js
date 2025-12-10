@@ -1,7 +1,9 @@
 /**
  * ============================================
  * 🎨 TEMPLATE EDITOR - POPUP STUDIO DESIGN
- * Atlantis City - v2.3 (Super Smooth Updates)
+ * Atlantis City
+ * v2.3 - 2024-12-09 - Super Smooth Updates
+ * v2.4 - 2024-12-10 - Ajout template YouTube
  * ============================================
  */
 
@@ -22,8 +24,9 @@
       icon: "📇",
       description: "Carte avec liens sociaux",
     },
-    synopsis: { name: "Synopsis", icon: "🎬", description: "Texte descriptif" },
+    synopsis: { name: "Synopsis", icon: "📜", description: "Texte descriptif" },
     iframe: { name: "Iframe", icon: "🌐", description: "Site externe" },
+    youtube: { name: "YouTube", icon: "🎬", description: "Vidéo YouTube" },
   };
 
   let state = {
@@ -111,7 +114,14 @@
   async function loadTemplates() {
     if (state.templatesLoaded) return;
     window.ATLANTIS_TEMPLATES = window.ATLANTIS_TEMPLATES || {};
-    for (const file of ["contact.tpl.js", "synopsis.tpl.js", "iframe.tpl.js"]) {
+    // Liste des templates à charger (incluant YouTube)
+    const templateFiles = [
+      "contact.tpl.js",
+      "synopsis.tpl.js",
+      "iframe.tpl.js",
+      "youtube.tpl.js",
+    ];
+    for (const file of templateFiles) {
       try {
         await loadScript(CONFIG.templatesBaseUrl + file);
       } catch (e) {
@@ -433,10 +443,16 @@
     // ========================================
     if (target.dataset.field) {
       const field = target.dataset.field;
-      state.templateData[field] = target.value;
+
+      // Gérer les checkboxes
+      if (target.type === "checkbox") {
+        state.templateData[field] = target.checked;
+      } else {
+        state.templateData[field] = target.value;
+      }
       state.hasChanges = true;
 
-      console.log(`📝 Field "${field}" =`, target.value);
+      console.log(`📝 Field "${field}" =`, state.templateData[field]);
 
       updateStatus();
       updatePreview();
@@ -761,5 +777,5 @@
   window.l2_openeditor = () => openFor("l2_obj");
   window.template_edit = openFor;
 
-  console.log("🎨 Popup Studio Editor v2.3 chargé! (Super Smooth)");
+  console.log("🎨 Popup Studio Editor v2.4 chargé! (Super Smooth + YouTube)");
 })();

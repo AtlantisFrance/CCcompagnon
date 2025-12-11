@@ -4,11 +4,172 @@
  * Atlantis City
  * v1.0 - 2024-12-11 - Carrousel 3D avec popup détail
  * v1.1 - 2024-12-11 - Fix échappement quotes dans generateJS
- * v1.2 - 2024-12-11 - Standardisation classes popup-{ID}-* (cohérence click-controller)
+ * v1.2 - 2024-12-11 - Standardisation classes popup-{ID}-*
+ * v1.3 - 2024-12-11 - Preview interactive (navigation, détails, temps réel)
+ * v1.4 - 2024-12-11 - Amélioration preview (fidélité au rendu final)
+ * v1.5 - 2024-12-11 - Cartes resserrées (offset*40±80 vs offset*60±120)
+ * v1.6 - 2024-12-11 - Flèches aux bords, tooltips en haut, largeur dynamique
+ * v1.7 - 2024-12-11 - Layout centré, stage largeur fixe, tooltips compacts
+ * v1.8 - 2024-12-11 - Preview: flèches s'écartent sans limite (+80px/photo)
+ * v1.9 - 2024-12-11 - Fix inputs width:100% + box-sizing
  * ============================================
  */
 
 window.ATLANTIS_TEMPLATES = window.ATLANTIS_TEMPLATES || {};
+
+// State global pour la preview interactive
+window._gallery3dPreview = {
+  activeIndex: 0,
+  items: [],
+  settings: {},
+};
+
+// Fonctions globales pour l'interactivité de la preview
+window._gallery3dPreviewNav = function (dir) {
+  var state = window._gallery3dPreview;
+  var newIndex = state.activeIndex + dir;
+  if (newIndex < 0) newIndex = state.items.length - 1;
+  if (newIndex >= state.items.length) newIndex = 0;
+  state.activeIndex = newIndex;
+  window._gallery3dPreviewUpdate();
+};
+
+window._gallery3dPreviewGoTo = function (index) {
+  var state = window._gallery3dPreview;
+  if (index === state.activeIndex) {
+    // Clic sur carte active → ouvrir détail
+    if (state.settings.showDetailPopup) {
+      window._gallery3dPreviewShowDetail(index);
+    }
+  } else {
+    state.activeIndex = index;
+    window._gallery3dPreviewUpdate();
+  }
+};
+
+window._gallery3dPreviewUpdate = function () {
+  var state = window._gallery3dPreview;
+  var cards = document.querySelectorAll(".preview-gallery-card");
+
+  cards.forEach(function (card, i) {
+    var offset = i - state.activeIndex;
+
+    if (offset === 0) {
+      card.style.transform = "translateX(0) translateZ(80px) rotateY(0deg)";
+      card.style.zIndex = 100;
+      card.style.opacity = 1;
+      card.style.filter = "brightness(1.1)";
+      card.classList.add("active");
+      // Afficher le hover text
+      var hover = card.querySelector(".preview-hover-text");
+      if (hover) hover.style.display = "block";
+    } else if (offset < 0) {
+      card.style.zIndex = 50 + offset;
+      card.style.transform =
+        "translateX(" +
+        (offset * 40 - 80) +
+        "px) translateZ(-50px) rotateY(40deg) scale(0.7)";
+      card.style.opacity = 0.5;
+      card.style.filter = "brightness(0.4)";
+      card.classList.remove("active");
+      var hover = card.querySelector(".preview-hover-text");
+      if (hover) hover.style.display = "none";
+    } else {
+      card.style.zIndex = 50 - offset;
+      card.style.transform =
+        "translateX(" +
+        (offset * 40 + 80) +
+        "px) translateZ(-50px) rotateY(-40deg) scale(0.7)";
+      card.style.opacity = 0.5;
+      card.style.filter = "brightness(0.4)";
+      card.classList.remove("active");
+      var hover = card.querySelector(".preview-hover-text");
+      if (hover) hover.style.display = "none";
+    }
+  });
+
+  // Mettre à jour le compteur
+  var counter = document.getElementById("preview-gallery-counter");
+  if (counter) {
+    counter.textContent = state.activeIndex + 1 + " / " + state.items.length;
+  }
+};
+
+window._gallery3dPreviewShowDetail = function (index) {
+  var state = window._gallery3dPreview;
+  var item = state.items[index];
+  if (!item) return;
+
+  // Supprimer ancien détail si présent
+  var old = document.getElementById("preview-detail-overlay");
+  if (old) old.remove();
+
+  // Créer le détail
+  var extraImagesHTML = "";
+  if (item.extraImages && item.extraImages.length > 0) {
+    extraImagesHTML =
+      '<p style="color:rgba(255,255,255,0.4);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;">' +
+      (state.settings.extraImagesLabel || "Plus de photos") +
+      "</p>" +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    item.extraImages.forEach(function (url, ei) {
+      extraImagesHTML +=
+        '<img src="' +
+        url +
+        '" onclick="window._gallery3dPreviewSetMainImg(\'' +
+        url.replace(/'/g, "\\'") +
+        '\')" style="width:60px;height:45px;object-fit:cover;border-radius:6px;cursor:pointer;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">';
+    });
+    extraImagesHTML += "</div>";
+  }
+
+  var detailHTML =
+    '<div id="preview-detail-overlay" style="' +
+    "position:absolute;inset:0;background:rgba(0,0,0,0.95);z-index:200;" +
+    "display:flex;align-items:center;justify-content:center;" +
+    "animation:fadeIn 0.3s ease;" +
+    '" onclick="if(event.target===this)this.remove()">' +
+    '<div style="' +
+    "width:90%;max-width:500px;max-height:90%;overflow-y:auto;" +
+    "background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);" +
+    "border-radius:16px;border:1px solid rgba(255,255,255,0.1);" +
+    "box-shadow:0 25px 50px rgba(0,0,0,0.5);" +
+    "animation:slideUp 0.3s ease;" +
+    '">' +
+    '<div style="position:relative;">' +
+    '<img id="preview-detail-main-img" src="' +
+    (item.image || "") +
+    '" style="' +
+    "width:100%;height:200px;object-fit:cover;border-radius:16px 16px 0 0;" +
+    '">' +
+    '<button onclick="document.getElementById(\'preview-detail-overlay\').remove()" style="' +
+    "position:absolute;top:12px;right:12px;width:32px;height:32px;" +
+    "background:rgba(0,0,0,0.6);border:none;border-radius:50%;" +
+    "color:white;font-size:16px;cursor:pointer;" +
+    '">✕</button>' +
+    "</div>" +
+    '<div style="padding:20px;">' +
+    '<h3 style="color:white;font-size:18px;margin:0 0 8px;font-weight:600;">' +
+    (item.title || "Sans titre") +
+    "</h3>" +
+    '<p style="color:rgba(255,255,255,0.7);font-size:13px;line-height:1.5;margin:0;">' +
+    (item.description || "Aucune description") +
+    "</p>" +
+    extraImagesHTML +
+    "</div>" +
+    "</div>" +
+    "</div>";
+
+  var container = document.getElementById("tpl-preview-stage");
+  if (container) {
+    container.insertAdjacentHTML("beforeend", detailHTML);
+  }
+};
+
+window._gallery3dPreviewSetMainImg = function (url) {
+  var img = document.getElementById("preview-detail-main-img");
+  if (img) img.src = url;
+};
 
 window.ATLANTIS_TEMPLATES.gallery3d = {
   name: "Galerie 3D",
@@ -135,7 +296,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       .map(function (url, ei) {
         return (
           '<div class="tpl-extra-image-row" style="display:flex;gap:8px;align-items:center;margin-top:8px;">' +
-          '<input type="text" class="tpl-input url" style="flex:1;"' +
+          '<input type="text" class="tpl-input url" style="flex:1;min-width:0;box-sizing:border-box;"' +
           ' id="tpl-item-' +
           index +
           "-extra-" +
@@ -197,6 +358,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="image" data-index="' +
       index +
       '" autocomplete="off"' +
+      ' style="width:100%;box-sizing:border-box;"' +
       ' value="' +
       helpers.escapeHtml(item.image || "") +
       '" placeholder="https://...">' +
@@ -213,6 +375,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="hoverText" data-index="' +
       index +
       '" autocomplete="off"' +
+      ' style="width:100%;box-sizing:border-box;"' +
       ' value="' +
       helpers.escapeHtml(item.hoverText || "👁 Voir détails") +
       '" placeholder="👁 Voir détails">' +
@@ -238,6 +401,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="title" data-index="' +
       index +
       '" autocomplete="off"' +
+      ' style="width:100%;box-sizing:border-box;"' +
       ' value="' +
       helpers.escapeHtml(item.title || "") +
       '">' +
@@ -254,7 +418,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="description" data-index="' +
       index +
       '" autocomplete="off"' +
-      ' rows="3" style="resize:vertical;min-height:80px;">' +
+      ' rows="3" style="width:100%;box-sizing:border-box;resize:vertical;min-height:80px;">' +
       helpers.escapeHtml(item.description || "") +
       "</textarea>" +
       "</div>" +
@@ -281,13 +445,22 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     );
   },
 
-  // ===== APERÇU LIVE =====
+  // ===== APERÇU LIVE INTERACTIF - v1.4 amélioré =====
   renderPreview: function (data, helpers) {
     var settings = data.settings || {
       showDetailPopup: true,
       extraImagesLabel: "Plus de photos",
     };
     var items = data.items || [];
+
+    // Mettre à jour le state global
+    window._gallery3dPreview.items = items;
+    window._gallery3dPreview.settings = settings;
+    // Garder l'index actif valide
+    if (window._gallery3dPreview.activeIndex >= items.length) {
+      window._gallery3dPreview.activeIndex = Math.max(0, items.length - 1);
+    }
+    var activeIndex = window._gallery3dPreview.activeIndex;
 
     if (items.length === 0) {
       return (
@@ -298,39 +471,60 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       );
     }
 
+    // Générer les cartes avec positionnement 3D amélioré
     var cardsHTML = items
       .map(function (item, i) {
-        var transform, zIndex, opacity, filter;
-        if (i === 0) {
-          transform = "translateZ(200px)";
+        var offset = i - activeIndex;
+        var transform, zIndex, opacity, filter, isActive;
+
+        if (offset === 0) {
+          // Carte active - au centre, en avant
+          transform = "translateX(0) translateZ(80px) rotateY(0deg)";
           zIndex = 100;
           opacity = 1;
           filter = "brightness(1.1)";
-        } else if (i === 1) {
-          transform = "translateX(200px) rotateY(-45deg) scale(0.8)";
-          zIndex = 99;
-          opacity = 0.6;
-          filter = "brightness(0.6)";
+          isActive = true;
+        } else if (offset < 0) {
+          // Cartes à gauche - plus serrées
+          transform =
+            "translateX(" +
+            (offset * 40 - 80) +
+            "px) translateZ(-50px) rotateY(40deg) scale(0.7)";
+          zIndex = 50 + offset;
+          opacity = 0.5;
+          filter = "brightness(0.4)";
+          isActive = false;
         } else {
-          transform = "translateX(-200px) rotateY(45deg) scale(0.8)";
-          zIndex = 98;
-          opacity = 0.6;
-          filter = "brightness(0.6)";
+          // Cartes à droite - plus serrées
+          transform =
+            "translateX(" +
+            (offset * 40 + 80) +
+            "px) translateZ(-50px) rotateY(-40deg) scale(0.7)";
+          zIndex = 50 - offset;
+          opacity = 0.5;
+          filter = "brightness(0.4)";
+          isActive = false;
         }
 
         return (
-          '<div class="preview-card" data-preview-index="' +
+          '<div class="preview-gallery-card' +
+          (isActive ? " active" : "") +
+          '" data-preview-index="' +
           i +
-          '" style="' +
+          '" ' +
+          'onclick="window._gallery3dPreviewGoTo(' +
+          i +
+          ')" ' +
+          'style="' +
           "position:absolute;" +
-          "width:320px;" +
-          "height:220px;" +
-          "background:#000;" +
-          "border-radius:12px;" +
+          "width:280px;" +
+          "height:190px;" +
+          "background:#1e293b;" +
+          "border-radius:16px;" +
           "box-shadow:0 20px 50px rgba(0,0,0,0.8);" +
           "overflow:visible;" +
           "cursor:pointer;" +
-          "transition:all 0.6s cubic-bezier(0.25,0.8,0.25,1);" +
+          "transition:all 0.5s cubic-bezier(0.25,0.8,0.25,1);" +
           "transform:" +
           transform +
           ";" +
@@ -347,62 +541,145 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           '<img src="' +
           helpers.escapeHtml(item.image || "") +
           '" alt="" style="' +
-          "width:100%;height:100%;object-fit:cover;border-radius:12px;" +
-          '" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 320 220%22><rect fill=%22%23374151%22 width=%22320%22 height=%22220%22/><text x=%22160%22 y=%22110%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2214%22>Image non trouvée</text></svg>\'">' +
+          "width:100%;height:100%;object-fit:cover;border-radius:16px;pointer-events:none;" +
+          '" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 280 190%22><rect fill=%22%23374151%22 width=%22280%22 height=%22190%22/><text x=%22140%22 y=%22100%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2212%22>Image</text></svg>\'">' +
+          // Reflet
           '<div style="' +
           "position:absolute;" +
-          "top:100%;left:0;width:100%;height:60%;" +
-          "margin-top:10px;" +
+          "top:100%;left:0;width:100%;height:50%;" +
+          "margin-top:8px;" +
           "background-image:url('" +
           helpers.escapeHtml(item.image || "") +
           "');" +
           "background-size:cover;" +
           "background-position:bottom center;" +
           "transform:scaleY(-1);" +
-          "border-radius:12px;" +
-          "-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%);" +
-          "mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%);" +
+          "border-radius:16px;" +
+          "-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.25) 0%,transparent 70%);" +
+          "mask-image:linear-gradient(to top,rgba(0,0,0,0.25) 0%,transparent 70%);" +
           "pointer-events:none;" +
           '"></div>' +
-          (i === 0
-            ? '<div style="' +
-              "position:absolute;bottom:15px;left:50%;transform:translateX(-50%);" +
-              "background:rgba(0,0,0,0.7);color:white;padding:8px 16px;" +
-              "border-radius:20px;font-size:13px;white-space:nowrap;" +
-              '">' +
-              helpers.escapeHtml(item.hoverText || "👁 Voir détails") +
-              "</div>"
-            : "") +
+          // Hover text (seulement sur carte active)
+          '<div class="preview-hover-text" style="' +
+          "position:absolute;bottom:12px;left:50%;transform:translateX(-50%);" +
+          "background:rgba(0,0,0,0.85);color:white;padding:8px 16px;" +
+          "border-radius:20px;font-size:13px;white-space:nowrap;" +
+          "pointer-events:none;" +
+          "display:" +
+          (isActive ? "block" : "none") +
+          ";" +
+          '">' +
+          helpers.escapeHtml(item.hoverText || "👁 Voir détails") +
+          "</div>" +
           "</div>"
         );
       })
       .join("");
 
-    return (
+    // Styles et animations
+    // Largeur du stage basée sur le nombre d'items (sans limite)
+    var stageWidthPx = 280 + (items.length - 1) * 80 + 140; // container + 80px par carte latérale + marges flèches
+
+    var stylesHTML =
       "<style>" +
+      "@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }" +
+      "@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }" +
+      ".preview-gallery-stage {" +
+      "position:relative;" +
+      "width:" +
+      stageWidthPx +
+      "px;" +
+      "max-width:100%;" +
+      "height:320px;" +
+      "display:flex;" +
+      "align-items:center;" +
+      "justify-content:center;" +
+      "}" +
       ".preview-gallery-container {" +
       "position:relative;" +
-      "width:100%;" +
-      "height:400px;" +
+      "width:280px;" +
+      "height:250px;" +
+      "transform-style:preserve-3d;" +
+      "perspective:1000px;" +
+      "}" +
+      ".preview-gallery-card:hover {" +
+      "filter:brightness(1.2) !important;" +
+      "}" +
+      ".preview-gallery-card.active:hover {" +
+      "transform:translateX(0) translateZ(100px) rotateY(0deg) scale(1.03) !important;" +
+      "box-shadow:0 30px 60px rgba(0,0,0,0.9);" +
+      "}" +
+      ".preview-nav-btn {" +
+      "position:absolute;" +
+      "top:50%;" +
+      "transform:translateY(-50%);" +
+      "background:rgba(255,255,255,0.15);" +
+      "border:1px solid rgba(255,255,255,0.3);" +
+      "color:white;" +
+      "font-size:18px;" +
+      "width:40px;" +
+      "height:40px;" +
+      "border-radius:50%;" +
+      "cursor:pointer;" +
+      "z-index:150;" +
+      "transition:all 0.2s;" +
+      "display:flex;" +
+      "align-items:center;" +
+      "justify-content:center;" +
+      "}" +
+      ".preview-nav-btn:hover {" +
+      "background:rgba(255,255,255,0.25);" +
+      "transform:translateY(-50%) scale(1.1);" +
+      "}" +
+      "</style>";
+
+    // Navigation (seulement si plusieurs images) - flèches près des bords
+    var navHTML = "";
+    if (items.length > 1) {
+      navHTML =
+        '<button class="preview-nav-btn" style="left:5px;" onclick="window._gallery3dPreviewNav(-1)">❮</button>' +
+        '<button class="preview-nav-btn" style="right:5px;" onclick="window._gallery3dPreviewNav(1)">❯</button>';
+    }
+
+    // Info bar - AU DESSUS du carrousel, centré
+    var infoHTML =
+      '<div style="' +
+      "text-align:center;" +
+      "margin-bottom:12px;" +
       "display:flex;" +
       "justify-content:center;" +
       "align-items:center;" +
-      "perspective:1000px;" +
-      "transform-style:preserve-3d;" +
-      "}" +
-      "</style>" +
+      "gap:10px;" +
+      "color:#64748b;" +
+      "font-size:11px;" +
+      "flex-wrap:wrap;" +
+      '">' +
+      '<span id="preview-gallery-counter" style="' +
+      "background:rgba(99,102,241,0.2);" +
+      "padding:5px 12px;" +
+      "border-radius:12px;" +
+      "color:#a5b4fc;" +
+      "font-weight:600;" +
+      '">' +
+      (activeIndex + 1) +
+      " / " +
+      items.length +
+      "</span>" +
+      "<span>🖱️ Clic image active = détails</span>" +
+      '<span style="color:#475569;">💡 Flèches/clic latéral = naviguer</span>' +
+      "</div>";
+
+    // Structure: wrapper centré contenant tooltips + stage avec flèches intégrées
+    return (
+      stylesHTML +
+      '<div style="display:flex;flex-direction:column;align-items:center;width:100%;">' +
+      infoHTML +
+      '<div class="preview-gallery-stage">' +
+      navHTML +
       '<div class="preview-gallery-container">' +
       cardsHTML +
       "</div>" +
-      '<div style="text-align:center;margin-top:20px;color:#64748b;font-size:13px;">' +
-      '<i class="fas fa-arrows-alt-h"></i> ' +
-      items.length +
-      " image" +
-      (items.length > 1 ? "s" : "") +
-      " dans le carrousel" +
-      (settings.showDetailPopup
-        ? " • Popup détail activée"
-        : " • Lightbox simple") +
+      "</div>" +
       "</div>"
     );
   },
@@ -514,9 +791,10 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "\n" +
       '  var cardsHTML = "";\n' +
       "  for (var i = 0; i < ITEMS.length; i++) {\n" +
+      "    var imgUrl = ITEMS[i].image.replace(/'/g, \"\\\\'\");\n" +
       "    cardsHTML += '<div class=\"popup-' + ID + '-card\" data-index=\"' + i + '\">' +\n" +
       "      '<img src=\"' + ITEMS[i].image + '\" alt=\"\">' +\n" +
-      "      '<div class=\"popup-' + ID + '-reflection\" style=\"background-image:url(\\'' + ITEMS[i].image + '\\')\">' + '</div>' +\n" +
+      "      '<div class=\"popup-' + ID + '-reflection\" style=\"background-image:url(\\'' + imgUrl + '\\')\">' + '</div>' +\n" +
       "      '<div class=\"popup-' + ID + '-hover\">' + ITEMS[i].hoverText + '</div>' +\n" +
       "    '</div>';\n" +
       "  }\n" +
@@ -700,4 +978,4 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
   },
 };
 
-console.log("🎠 Template Gallery 3D chargé");
+console.log("🎠 Template Gallery 3D v1.4 chargé (preview améliorée)");

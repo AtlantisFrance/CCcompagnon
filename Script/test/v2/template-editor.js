@@ -7,6 +7,7 @@
  * v2.5 - 2024-12-10 - Menu déroulant + chargement dynamique des templates
  * v2.6 - 2024-12-10 - Raccourcis console dynamiques depuis objects-config.js
  * v2.7 - 2024-12-11 - Support Gallery3D (items, extraImages, settings)
+ * v2.8 - 2024-12-11 - Fix Gallery3D: focalX/focalY int + update miniature on URL change
  * ============================================
  */
 
@@ -856,7 +857,7 @@
     }
 
     // ========================================
-    // 🎠 ITEM FIELDS (data-item-field) - v2.7
+    // 🎠 ITEM FIELDS (data-item-field) - v2.7 + v2.8 FIX
     // ========================================
     if (target.dataset.itemField) {
       const index = parseInt(target.dataset.index);
@@ -865,10 +866,31 @@
       if (!state.templateData.items?.[index]) return;
 
       const item = state.templateData.items[index];
-      item[field] = target.value;
+
+      // ✅ v2.8 FIX: focalX et focalY doivent être des INT
+      if (field === "focalX" || field === "focalY") {
+        item[field] = parseInt(target.value) || 50;
+        console.log(`🎯 Item[${index}].${field} = ${item[field]} (int)`);
+      } else {
+        item[field] = target.value;
+        console.log(`🎠 Item[${index}].${field} =`, target.value);
+      }
+
       state.hasChanges = true;
 
-      console.log(`🎠 Item[${index}].${field} =`, target.value);
+      // ✅ v2.8 FIX: Mettre à jour la miniature du focal picker quand l'URL change
+      if (field === "image") {
+        const focalPicker = document.getElementById(`focal-picker-${index}`);
+        if (focalPicker) {
+          const img = focalPicker.querySelector("img");
+          if (img) {
+            img.src = target.value || "";
+            console.log(
+              `🖼️ Focal picker miniature mise à jour pour Item[${index}]`
+            );
+          }
+        }
+      }
 
       updateStatus();
       updatePreview();
@@ -1082,7 +1104,7 @@
   }
 
   // ============================================
-  // 🎠 GALLERY3D FUNCTIONS (v2.7)
+  // 🎠 GALLERY3D FUNCTIONS (v2.7 + v2.8)
   // ============================================
   function addGalleryItem() {
     if (!state.templateData.items) state.templateData.items = [];
@@ -1094,6 +1116,8 @@
       title: "",
       description: "",
       extraImages: [],
+      focalX: 50, // ✅ v2.8: Valeurs par défaut INT
+      focalY: 50, // ✅ v2.8: Valeurs par défaut INT
     });
     state.hasChanges = true;
 
@@ -1338,6 +1362,6 @@
   }
 
   console.log(
-    "🎨 Popup Studio Editor v2.7 chargé! (Dynamic Templates + Gallery3D Support)"
+    "🎨 Popup Studio Editor v2.8 chargé! (Dynamic Templates + Gallery3D + Focal Fix)"
   );
 })();

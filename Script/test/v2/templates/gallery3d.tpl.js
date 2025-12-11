@@ -12,6 +12,8 @@
  * v1.7 - 2024-12-11 - Layout centré, stage largeur fixe, tooltips compacts
  * v1.8 - 2024-12-11 - Preview: flèches s'écartent sans limite (+80px/photo)
  * v1.9 - 2024-12-11 - Focal Point Picker: clic sur miniature pour choisir le point focal
+ * v2.0 - 2024-12-11 - Fix Focal: conteneur carré + contain + calcul coordonnées correct
+ * v2.1 - 2024-12-11 - Fix Focal: dispatch event pour X ET Y (preview temps réel)
  * ============================================
  */
 
@@ -180,19 +182,62 @@ window._gallery3dPreviewSetMainImg = function (url) {
 window._gallery3dFocalPick = function (event, index) {
   event.stopPropagation();
   var container = event.currentTarget;
+  var img = container.querySelector("img");
   var rect = container.getBoundingClientRect();
-  var x = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-  var y = Math.round(((event.clientY - rect.top) / rect.height) * 100);
+
+  // Calculer les coordonnées brutes dans le conteneur
+  var clickX = event.clientX - rect.left;
+  var clickY = event.clientY - rect.top;
+
+  // Avec object-fit:contain, l'image peut avoir des bandes vides
+  // On doit calculer où l'image est réellement positionnée
+  var containerW = rect.width;
+  var containerH = rect.height;
+
+  // Récupérer les dimensions naturelles de l'image
+  var imgW = img.naturalWidth || containerW;
+  var imgH = img.naturalHeight || containerH;
+
+  // Calculer le ratio de l'image vs conteneur
+  var imgRatio = imgW / imgH;
+  var containerRatio = containerW / containerH;
+
+  var displayW, displayH, offsetX, offsetY;
+
+  if (imgRatio > containerRatio) {
+    // Image plus large que le conteneur (bandes en haut/bas)
+    displayW = containerW;
+    displayH = containerW / imgRatio;
+    offsetX = 0;
+    offsetY = (containerH - displayH) / 2;
+  } else {
+    // Image plus haute que le conteneur (bandes gauche/droite)
+    displayH = containerH;
+    displayW = containerH * imgRatio;
+    offsetX = (containerW - displayW) / 2;
+    offsetY = 0;
+  }
+
+  // Convertir le clic en coordonnées relatives à l'image
+  var relX = (clickX - offsetX) / displayW;
+  var relY = (clickY - offsetY) / displayH;
+
+  // Convertir en pourcentage (0-100)
+  var x = Math.round(relX * 100);
+  var y = Math.round(relY * 100);
 
   // Clamp entre 0 et 100
   x = Math.max(0, Math.min(100, x));
   y = Math.max(0, Math.min(100, y));
 
-  // Mettre à jour le point visuel
+  // Mettre à jour le point visuel - position par rapport au CONTENEUR
   var dot = container.querySelector(".focal-dot");
   if (dot) {
-    dot.style.left = x + "%";
-    dot.style.top = y + "%";
+    // Convertir les coordonnées image (x%, y%) en coordonnées conteneur
+    var dotLeft = offsetX + (displayW * x) / 100;
+    var dotTop = offsetY + (displayH * y) / 100;
+    dot.style.left = (dotLeft / containerW) * 100 + "%";
+    dot.style.top = (dotTop / containerH) * 100 + "%";
   }
 
   // Mettre à jour le label
@@ -207,9 +252,12 @@ window._gallery3dFocalPick = function (event, index) {
   if (inputX) inputX.value = x;
   if (inputY) inputY.value = y;
 
-  // Déclencher un event pour la mise à jour des données
+  // Déclencher les events pour la mise à jour des données (X ET Y)
   if (inputX) {
     inputX.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (inputY) {
+    inputY.dispatchEvent(new Event("input", { bubbles: true }));
   }
 };
 
@@ -220,8 +268,38 @@ window._gallery3dFocalReset = function (event, index) {
   // Reset à 50%, 50%
   var container = document.getElementById("focal-picker-" + index);
   if (container) {
+    var img = container.querySelector("img");
     var dot = container.querySelector(".focal-dot");
-    if (dot) {
+
+    if (dot && img && img.naturalWidth) {
+      // Calculer la position du centre de l'image dans le conteneur
+      var containerW = container.offsetWidth;
+      var containerH = container.offsetHeight;
+      var imgW = img.naturalWidth;
+      var imgH = img.naturalHeight;
+      var imgRatio = imgW / imgH;
+      var containerRatio = containerW / containerH;
+
+      var displayW, displayH, offsetX, offsetY;
+      if (imgRatio > containerRatio) {
+        displayW = containerW;
+        displayH = containerW / imgRatio;
+        offsetX = 0;
+        offsetY = (containerH - displayH) / 2;
+      } else {
+        displayH = containerH;
+        displayW = containerH * imgRatio;
+        offsetX = (containerW - displayW) / 2;
+        offsetY = 0;
+      }
+
+      // Centre de l'image = offset + display/2
+      var centerX = offsetX + displayW / 2;
+      var centerY = offsetY + displayH / 2;
+      dot.style.left = (centerX / containerW) * 100 + "%";
+      dot.style.top = (centerY / containerH) * 100 + "%";
+    } else {
+      // Fallback si image pas chargée
       dot.style.left = "50%";
       dot.style.top = "50%";
     }
@@ -237,8 +315,12 @@ window._gallery3dFocalReset = function (event, index) {
   if (inputX) inputX.value = 50;
   if (inputY) inputY.value = 50;
 
+  // Déclencher les events pour la mise à jour des données (X ET Y)
   if (inputX) {
     inputX.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  if (inputY) {
+    inputY.dispatchEvent(new Event("input", { bubbles: true }));
   }
 };
 
@@ -413,7 +495,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       '<div class="tpl-field-group" style="margin-top:16px;">' +
       '<label class="tpl-field-label">📍 Point focal (cliquez sur l\'image)</label>' +
       '<div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;">' +
-      // Miniature cliquable
+      // Miniature cliquable - CARRÉ pour voir toute l'image
       '<div id="focal-picker-' +
       index +
       '" ' +
@@ -422,8 +504,8 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ')" ' +
       'style="' +
       "position:relative;" +
-      "width:140px;" +
-      "height:95px;" +
+      "width:120px;" +
+      "height:120px;" +
       "border-radius:8px;" +
       "overflow:hidden;" +
       "cursor:crosshair;" +
@@ -434,9 +516,9 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       '<img src="' +
       helpers.escapeHtml(item.image || "") +
       '" ' +
-      'style="width:100%;height:100%;object-fit:cover;pointer-events:none;" ' +
-      "onerror=\"this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 140 95%22><rect fill=%22%23374151%22 width=%22140%22 height=%2295%22/><text x=%2270%22 y=%2252%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2210%22>Image</text></svg>'\">" +
-      // Point focal (dot)
+      'style="width:100%;height:100%;object-fit:contain;pointer-events:none;" ' +
+      "onerror=\"this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 120 120%22><rect fill=%22%23374151%22 width=%22120%22 height=%22120%22/><text x=%2260%22 y=%2265%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2210%22>Image</text></svg>'\">" +
+      // Point focal (dot) - positionné par rapport à l'image, pas le conteneur
       '<div class="focal-dot" style="' +
       "position:absolute;" +
       "width:16px;" +

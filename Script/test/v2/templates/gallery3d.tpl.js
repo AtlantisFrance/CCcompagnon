@@ -11,7 +11,6 @@
  * v1.6 - 2024-12-11 - Flèches aux bords, tooltips en haut, largeur dynamique
  * v1.7 - 2024-12-11 - Layout centré, stage largeur fixe, tooltips compacts
  * v1.8 - 2024-12-11 - Preview: flèches s'écartent sans limite (+80px/photo)
- * v1.9 - 2024-12-11 - Fix inputs width:100% + box-sizing
  * ============================================
  */
 
@@ -296,7 +295,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       .map(function (url, ei) {
         return (
           '<div class="tpl-extra-image-row" style="display:flex;gap:8px;align-items:center;margin-top:8px;">' +
-          '<input type="text" class="tpl-input url" style="flex:1;min-width:0;box-sizing:border-box;"' +
+          '<input type="text" class="tpl-input url" style="flex:1;"' +
           ' id="tpl-item-' +
           index +
           "-extra-" +
@@ -358,7 +357,6 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="image" data-index="' +
       index +
       '" autocomplete="off"' +
-      ' style="width:100%;box-sizing:border-box;"' +
       ' value="' +
       helpers.escapeHtml(item.image || "") +
       '" placeholder="https://...">' +
@@ -375,7 +373,6 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="hoverText" data-index="' +
       index +
       '" autocomplete="off"' +
-      ' style="width:100%;box-sizing:border-box;"' +
       ' value="' +
       helpers.escapeHtml(item.hoverText || "👁 Voir détails") +
       '" placeholder="👁 Voir détails">' +
@@ -401,7 +398,6 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="title" data-index="' +
       index +
       '" autocomplete="off"' +
-      ' style="width:100%;box-sizing:border-box;"' +
       ' value="' +
       helpers.escapeHtml(item.title || "") +
       '">' +
@@ -418,7 +414,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       ' data-item-field="description" data-index="' +
       index +
       '" autocomplete="off"' +
-      ' rows="3" style="width:100%;box-sizing:border-box;resize:vertical;min-height:80px;">' +
+      ' rows="3" style="resize:vertical;min-height:80px;">' +
       helpers.escapeHtml(item.description || "") +
       "</textarea>" +
       "</div>" +

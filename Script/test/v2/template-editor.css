@@ -2,8 +2,10 @@
  * ============================================
  * 🎨 TEMPLATE EDITOR - POPUP STUDIO DESIGN
  * Atlantis City
- * 
- * Design inspiré du prototype Popup Studio v7
+ * v1.0 - 2024-12-06 - Design initial Popup Studio v7
+ * v1.1 - 2024-12-11 - Fix: .tpl-field-group full width in grid
+ * v1.2 - 2024-12-11 - Fix: box-sizing sur tous les inputs/textarea
+ * v1.3 - 2024-12-11 - Fix: .tpl-contact-fields flex-column au lieu de grid
  * ============================================
  */
 
@@ -268,6 +270,7 @@
 
 .tpl-input {
   width: 100%;
+  box-sizing: border-box;
   padding: 12px 14px;
   background: rgba(2, 6, 23, 0.8);
   border: 1px solid #1e293b;
@@ -421,11 +424,30 @@
   color: #f87171;
 }
 
-/* Contact Fields Grid */
+/* Contact Fields - Vertical layout */
 .tpl-contact-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Field groups take full width */
+.tpl-contact-fields .tpl-field-group,
+.tpl-contact-fields .tpl-detail-fields {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure all inputs/textarea in detail-fields take full width */
+.tpl-detail-fields .tpl-input,
+.tpl-detail-fields input,
+.tpl-detail-fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tpl-detail-fields .tpl-field-group {
+  width: 100%;
 }
 
 .tpl-contact-field {
@@ -448,6 +470,8 @@
 }
 
 .tpl-contact-field input {
+  width: 100%;
+  box-sizing: border-box;
   padding: 8px 10px;
   background: #0f172a;
   border: 1px solid #1e293b;

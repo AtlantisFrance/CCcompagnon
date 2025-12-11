@@ -6,6 +6,7 @@
  * v2.4 - 2024-12-10 - Ajout template YouTube
  * v2.5 - 2024-12-10 - Menu déroulant + chargement dynamique des templates
  * v2.6 - 2024-12-10 - Raccourcis console dynamiques depuis objects-config.js
+ * v2.7 - 2024-12-11 - Support Gallery3D (items, extraImages, settings)
  * ============================================
  */
 
@@ -158,6 +159,13 @@
         icon: "🎬",
         description: "Lecteur vidéo",
         file: "youtube.tpl.js",
+      },
+      {
+        id: "gallery3d",
+        name: "Galerie 3D",
+        icon: "🎠",
+        description: "Carrousel 3D",
+        file: "gallery3d.tpl.js",
       },
     ];
     return false;
@@ -680,6 +688,24 @@
   }
 
   // ============================================
+  // 🎠 GALLERY3D: Met à jour SEULEMENT la liste des items (v2.7)
+  // ============================================
+  function updateItemsOnly() {
+    const tpl = window.ATLANTIS_TEMPLATES?.[state.templateType];
+    const itemsList = document.getElementById("tpl-items-list");
+
+    if (itemsList && tpl?.renderItemsList) {
+      itemsList.innerHTML = tpl.renderItemsList(state.templateData, helpers);
+    } else {
+      // Fallback: mettre à jour tout le formulaire
+      updateFormOnly();
+      return;
+    }
+    updatePreview();
+    updateStatus();
+  }
+
+  // ============================================
   // 🔗 EVENT DELEGATION (fonctionne même après re-render)
   // ============================================
   function initEvents() {
@@ -796,6 +822,81 @@
       updatePreview();
       return;
     }
+
+    // ========================================
+    // ⚙️ SETTING FIELDS (data-setting-field) - v2.7
+    // ========================================
+    if (target.dataset.settingField) {
+      const field = target.dataset.settingField;
+
+      if (!state.templateData.settings) state.templateData.settings = {};
+
+      // Gérer les checkboxes
+      if (target.type === "checkbox") {
+        state.templateData.settings[field] = target.checked;
+      } else {
+        state.templateData.settings[field] = target.value;
+      }
+      state.hasChanges = true;
+
+      console.log(
+        `⚙️ Setting "${field}" =`,
+        state.templateData.settings[field]
+      );
+
+      // Si showDetailPopup change, re-render le formulaire pour activer/désactiver les champs détail
+      if (field === "showDetailPopup") {
+        updateFormOnly();
+        return;
+      }
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
+
+    // ========================================
+    // 🎠 ITEM FIELDS (data-item-field) - v2.7
+    // ========================================
+    if (target.dataset.itemField) {
+      const index = parseInt(target.dataset.index);
+      const field = target.dataset.itemField;
+
+      if (!state.templateData.items?.[index]) return;
+
+      const item = state.templateData.items[index];
+      item[field] = target.value;
+      state.hasChanges = true;
+
+      console.log(`🎠 Item[${index}].${field} =`, target.value);
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
+
+    // ========================================
+    // 🖼️ EXTRA IMAGE FIELDS (data-extra-field) - v2.7
+    // ========================================
+    if (target.dataset.extraField) {
+      const itemIndex = parseInt(target.dataset.itemIndex);
+      const extraIndex = parseInt(target.dataset.extraIndex);
+
+      if (!state.templateData.items?.[itemIndex]?.extraImages) return;
+
+      state.templateData.items[itemIndex].extraImages[extraIndex] =
+        target.value;
+      state.hasChanges = true;
+
+      console.log(
+        `🖼️ Item[${itemIndex}].extraImages[${extraIndex}] =`,
+        target.value
+      );
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
   }
 
   function handleAllClicks(e) {
@@ -852,13 +953,17 @@
       return;
     }
 
-    // Add contact
+    // ========================================
+    // 📇 CONTACT: Add contact
+    // ========================================
     if (btn.id === "tpl-add-contact" || btn.closest("#tpl-add-contact")) {
       addContact();
       return;
     }
 
-    // Remove contact
+    // ========================================
+    // 📇 CONTACT: Remove contact
+    // ========================================
     if (
       btn.dataset.removeIndex !== undefined ||
       btn.closest("[data-remove-index]")
@@ -872,6 +977,58 @@
         // Mettre à jour SEULEMENT la liste des contacts (smooth)
         updateContactsOnly();
       }
+      return;
+    }
+
+    // ========================================
+    // 🎠 GALLERY3D: Add item (v2.7)
+    // ========================================
+    if (btn.id === "tpl-add-item" || btn.closest("#tpl-add-item")) {
+      addGalleryItem();
+      return;
+    }
+
+    // ========================================
+    // 🎠 GALLERY3D: Remove item (v2.7)
+    // ========================================
+    if (
+      btn.dataset.removeItemIndex !== undefined ||
+      btn.closest("[data-remove-item-index]")
+    ) {
+      const removeBtn = btn.closest("[data-remove-item-index]") || btn;
+      const index = parseInt(removeBtn.dataset.removeItemIndex);
+      if (state.templateData.items) {
+        state.templateData.items.splice(index, 1);
+        state.hasChanges = true;
+        updateItemsOnly();
+      }
+      return;
+    }
+
+    // ========================================
+    // 🎠 GALLERY3D: Add extra image (v2.7)
+    // ========================================
+    if (
+      btn.dataset.addExtraTo !== undefined ||
+      btn.closest("[data-add-extra-to]")
+    ) {
+      const addBtn = btn.closest("[data-add-extra-to]") || btn;
+      const itemIndex = parseInt(addBtn.dataset.addExtraTo);
+      addExtraImage(itemIndex);
+      return;
+    }
+
+    // ========================================
+    // 🎠 GALLERY3D: Remove extra image (v2.7)
+    // ========================================
+    if (
+      btn.dataset.removeExtraIndex !== undefined ||
+      btn.closest("[data-remove-extra-index]")
+    ) {
+      const removeBtn = btn.closest("[data-remove-extra-index]") || btn;
+      const itemIndex = parseInt(removeBtn.dataset.removeExtraItem);
+      const extraIndex = parseInt(removeBtn.dataset.removeExtraIndex);
+      removeExtraImage(itemIndex, extraIndex);
       return;
     }
 
@@ -892,6 +1049,9 @@
     }
   }
 
+  // ============================================
+  // 📇 CONTACT FUNCTIONS
+  // ============================================
   function addContact() {
     if (!state.templateData.contacts) state.templateData.contacts = [];
 
@@ -921,6 +1081,73 @@
     });
   }
 
+  // ============================================
+  // 🎠 GALLERY3D FUNCTIONS (v2.7)
+  // ============================================
+  function addGalleryItem() {
+    if (!state.templateData.items) state.templateData.items = [];
+
+    const newIndex = state.templateData.items.length;
+    state.templateData.items.push({
+      image: "",
+      hoverText: "👁 Voir détails",
+      title: "",
+      description: "",
+      extraImages: [],
+    });
+    state.hasChanges = true;
+
+    // Mettre à jour SEULEMENT la liste des items
+    updateItemsOnly();
+
+    // Scroller vers le nouvel item
+    requestAnimationFrame(() => {
+      const content = document.getElementById("tpl-editor-content");
+      if (content) {
+        const newCard = content.querySelector(
+          `[data-item-index="${newIndex}"]`
+        );
+        if (newCard) {
+          newCard.scrollIntoView({ behavior: "smooth", block: "center" });
+          newCard.style.animation = "tpl-flash 0.6s ease";
+        }
+      }
+    });
+  }
+
+  function addExtraImage(itemIndex) {
+    if (!state.templateData.items?.[itemIndex]) return;
+
+    if (!state.templateData.items[itemIndex].extraImages) {
+      state.templateData.items[itemIndex].extraImages = [];
+    }
+
+    state.templateData.items[itemIndex].extraImages.push("");
+    state.hasChanges = true;
+
+    // Mettre à jour SEULEMENT la liste des items
+    updateItemsOnly();
+
+    console.log(`🖼️ Extra image ajoutée à Item[${itemIndex}]`);
+  }
+
+  function removeExtraImage(itemIndex, extraIndex) {
+    if (!state.templateData.items?.[itemIndex]?.extraImages) return;
+
+    state.templateData.items[itemIndex].extraImages.splice(extraIndex, 1);
+    state.hasChanges = true;
+
+    // Mettre à jour SEULEMENT la liste des items
+    updateItemsOnly();
+
+    console.log(
+      `🖼️ Extra image [${extraIndex}] supprimée de Item[${itemIndex}]`
+    );
+  }
+
+  // ============================================
+  // 📊 STATUS
+  // ============================================
   function updateStatus() {
     const el = document.getElementById("tpl-status");
     if (el) {
@@ -1111,6 +1338,6 @@
   }
 
   console.log(
-    "🎨 Popup Studio Editor v2.6 chargé! (Dynamic Templates + Dynamic Shortcuts)"
+    "🎨 Popup Studio Editor v2.7 chargé! (Dynamic Templates + Gallery3D Support)"
   );
 })();

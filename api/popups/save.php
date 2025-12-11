@@ -21,7 +21,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/generators/contact.gen.php';
 require_once __DIR__ . '/generators/iframe.gen.php';
 require_once __DIR__ . '/generators/youtube.gen.php';
-
+require_once __DIR__ . '/generators/gallery3d.gen.php';
 // ============================================
 // 🔧 UTILITAIRES PARTAGÉS
 // ============================================
@@ -45,14 +45,16 @@ function generatePopupJS($objectName, $templateType, $config, $spaceSlug) {
     $timestamp = date('Y-m-d H:i:s');
     
     switch ($templateType) {
-        case 'contact':
-            return generateContactPopupJS($objectName, $config, $timestamp);
-        case 'iframe':
-            return generateIframePopupJS($objectName, $config, $timestamp);
-        case 'youtube':
-            return generateYoutubePopupJS($objectName, $config, $timestamp);
-        default:
-            return generateGenericPopupJS($objectName, $templateType, $config, $timestamp);
+    case 'contact':
+        return generateContactPopupJS($objectName, $config, $timestamp);
+    case 'iframe':
+        return generateIframePopupJS($objectName, $config, $timestamp);
+    case 'youtube':
+        return generateYoutubePopupJS($objectName, $config, $timestamp);
+    case 'gallery3d':                                                    
+        return generateGallery3dPopupJS($objectName, $config, $timestamp); // ← AJOUTER
+    default:
+        return generateGenericPopupJS($objectName, $templateType, $config, $timestamp);
     }
 }
 

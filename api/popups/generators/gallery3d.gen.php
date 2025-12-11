@@ -4,9 +4,8 @@
  * 🎠 GÉNÉRATEUR POPUP - GALLERY 3D
  * Atlantis City
  * v1.0 - 2024-12-11 - Création initiale
- * v1.1 - 2024-12-11 - Standardisation classes popup-{ID}-* (cohérence click-controller)
- * 
- * Carrousel 3D avec vue détaillée ou lightbox
+ * v1.1 - 2024-12-11 - Standardisation classes popup-{ID}-*
+ * v1.2 - 2024-12-11 - Support Focal Point (focalX, focalY) pour object-position
  * ============================================
  */
 
@@ -15,7 +14,7 @@ if (!defined('ATLANTIS_API')) {
 }
 
 /**
- * Génère le JS pour une popup Gallery 3D
+ * Génère le JS pour une popup Gallery 3D avec focal point
  */
 function generateGallery3dPopupJS($objectName, $config, $timestamp) {
     
@@ -29,6 +28,14 @@ function generateGallery3dPopupJS($objectName, $config, $timestamp) {
     $itemsArray = [];
     
     foreach ($items as $item) {
+        // Récupérer les focal points (défaut: 50%)
+        $focalX = isset($item['focalX']) ? intval($item['focalX']) : 50;
+        $focalY = isset($item['focalY']) ? intval($item['focalY']) : 50;
+        
+        // Clamp entre 0 et 100
+        $focalX = max(0, min(100, $focalX));
+        $focalY = max(0, min(100, $focalY));
+        
         $extraImages = [];
         if (!empty($item['extraImages']) && is_array($item['extraImages'])) {
             foreach ($item['extraImages'] as $url) {
@@ -41,6 +48,8 @@ function generateGallery3dPopupJS($objectName, $config, $timestamp) {
             'hoverText:"' . escapeJS($item['hoverText'] ?? '👁 Voir détails') . '",' .
             'title:"' . escapeJS($item['title'] ?? '') . '",' .
             'description:"' . escapeJS($item['description'] ?? '') . '",' .
+            'focalX:' . $focalX . ',' .
+            'focalY:' . $focalY . ',' .
             'extraImages:[' . implode(',', $extraImages) . ']' .
         '}';
     }
@@ -51,6 +60,7 @@ function generateGallery3dPopupJS($objectName, $config, $timestamp) {
 /**
  * 🎠 Popup Gallery 3D - {$objectName}
  * Généré le {$timestamp}
+ * Avec support Focal Point pour le cadrage d'image
  */
 (function(){
 "use strict";
@@ -74,7 +84,7 @@ function injectStyles() {
     ".popup-" + ID + "-carousel{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);width:100%;height:60%;display:flex;justify-content:center;align-items:center;transform-style:preserve-3d}" +
     ".popup-" + ID + "-card{position:absolute;width:500px;height:350px;background:#000;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,0.8);transition:all 0.6s cubic-bezier(0.25,0.8,0.25,1);cursor:pointer;overflow:visible;will-change:transform,opacity,filter;backface-visibility:hidden}" +
     ".popup-" + ID + "-card img{width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:12px}" +
-    ".popup-" + ID + "-reflection{position:absolute;top:100%;left:0;width:100%;height:60%;margin-top:10px;background-size:cover;background-position:bottom center;transform:scaleY(-1);border-radius:12px;pointer-events:none;-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%);mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%)}" +
+    ".popup-" + ID + "-reflection{position:absolute;top:100%;left:0;width:100%;height:60%;margin-top:10px;background-size:cover;transform:scaleY(-1);border-radius:12px;pointer-events:none;-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%);mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%)}" +
     ".popup-" + ID + "-hover{position:absolute;bottom:15px;left:50%;transform:translateX(-50%) translateY(10px);background:rgba(0,0,0,0.7);color:white;padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;transition:all 0.3s ease;pointer-events:none;white-space:nowrap}" +
     ".popup-" + ID + "-card.active:hover .popup-" + ID + "-hover{opacity:1;transform:translateX(-50%) translateY(0)}" +
     ".popup-" + ID + "-card.active:hover{transform:translateX(0) translateZ(270px) rotateY(0deg) scale(1.05)!important;box-shadow:0 30px 80px rgba(0,0,0,0.9),0 0 40px rgba(255,255,255,0.15)}" +
@@ -109,9 +119,11 @@ function show() {
   var cardsHTML = "";
   for (var i = 0; i < ITEMS.length; i++) {
     var imgUrl = ITEMS[i].image.replace(/'/g, "\\\\'");
+    var fX = ITEMS[i].focalX || 50;
+    var fY = ITEMS[i].focalY || 50;
     cardsHTML += '<div class="popup-' + ID + '-card" data-index="' + i + '">' +
-      '<img src="' + ITEMS[i].image + '" alt="">' +
-      '<div class="popup-' + ID + '-reflection" style="background-image:url(\\'' + imgUrl + '\\')"></div>' +
+      '<img src="' + ITEMS[i].image + '" alt="" style="object-position:' + fX + '% ' + fY + '%">' +
+      '<div class="popup-' + ID + '-reflection" style="background-image:url(\\'' + imgUrl + '\\');background-position:' + fX + '% ' + fY + '%"></div>' +
       '<div class="popup-' + ID + '-hover">' + ITEMS[i].hoverText + '</div>' +
     '</div>';
   }
@@ -186,6 +198,8 @@ function navigate(dir) {
 
 function openDetail(index) {
   var item = ITEMS[index];
+  var fX = item.focalX || 50;
+  var fY = item.focalY || 50;
   var d = document.createElement("div");
   d.className = "popup-" + ID + "-detail";
   d.id = "popup-" + ID + "-detail";
@@ -201,7 +215,7 @@ function openDetail(index) {
 
   d.innerHTML = '<button class="popup-' + ID + '-detail-close">✕</button>' +
     '<div class="popup-' + ID + '-detail-content">' +
-    '<img id="popup-' + ID + '-main-img" src="' + item.image + '" style="width:100%;max-height:450px;object-fit:cover;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">' +
+    '<img id="popup-' + ID + '-main-img" src="' + item.image + '" style="width:100%;max-height:450px;object-fit:cover;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.5);object-position:' + fX + '% ' + fY + '%">' +
     '<h2 style="color:white;font-size:32px;margin:30px 0 15px;font-weight:600;">' + item.title + '</h2>' +
     '<p style="color:rgba(255,255,255,0.8);font-size:17px;line-height:1.7;margin-bottom:35px;">' + item.description + '</p>' +
     extrasHTML +
@@ -230,10 +244,12 @@ function closeDetail() {
 
 function openLightbox(index) {
   var item = ITEMS[index];
+  var fX = item.focalX || 50;
+  var fY = item.focalY || 50;
   var lb = document.createElement("div");
   lb.className = "popup-" + ID + "-lightbox";
   lb.id = "popup-" + ID + "-lightbox";
-  lb.innerHTML = '<img src="' + item.image + '" alt="">';
+  lb.innerHTML = '<img src="' + item.image + '" alt="" style="object-position:' + fX + '% ' + fY + '%">';
   document.body.appendChild(lb);
   setTimeout(function() { lb.classList.add("active"); }, 10);
   lb.onclick = closeLightbox;

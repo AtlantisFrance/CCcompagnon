@@ -11,6 +11,7 @@
  * v1.6 - 2024-12-11 - Flèches aux bords, tooltips en haut, largeur dynamique
  * v1.7 - 2024-12-11 - Layout centré, stage largeur fixe, tooltips compacts
  * v1.8 - 2024-12-11 - Preview: flèches s'écartent sans limite (+80px/photo)
+ * v1.9 - 2024-12-11 - Focal Point Picker: clic sur miniature pour choisir le point focal
  * ============================================
  */
 
@@ -140,6 +141,11 @@ window._gallery3dPreviewShowDetail = function (index) {
     (item.image || "") +
     '" style="' +
     "width:100%;height:200px;object-fit:cover;border-radius:16px 16px 0 0;" +
+    "object-position:" +
+    (item.focalX || 50) +
+    "% " +
+    (item.focalY || 50) +
+    "%;" +
     '">' +
     '<button onclick="document.getElementById(\'preview-detail-overlay\').remove()" style="' +
     "position:absolute;top:12px;right:12px;width:32px;height:32px;" +
@@ -170,6 +176,72 @@ window._gallery3dPreviewSetMainImg = function (url) {
   if (img) img.src = url;
 };
 
+// ===== FOCAL POINT PICKER =====
+window._gallery3dFocalPick = function (event, index) {
+  event.stopPropagation();
+  var container = event.currentTarget;
+  var rect = container.getBoundingClientRect();
+  var x = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+  var y = Math.round(((event.clientY - rect.top) / rect.height) * 100);
+
+  // Clamp entre 0 et 100
+  x = Math.max(0, Math.min(100, x));
+  y = Math.max(0, Math.min(100, y));
+
+  // Mettre à jour le point visuel
+  var dot = container.querySelector(".focal-dot");
+  if (dot) {
+    dot.style.left = x + "%";
+    dot.style.top = y + "%";
+  }
+
+  // Mettre à jour le label
+  var label = document.getElementById("focal-label-" + index);
+  if (label) {
+    label.textContent = x + "%, " + y + "%";
+  }
+
+  // Mettre à jour les champs cachés
+  var inputX = document.getElementById("tpl-item-focalX-" + index);
+  var inputY = document.getElementById("tpl-item-focalY-" + index);
+  if (inputX) inputX.value = x;
+  if (inputY) inputY.value = y;
+
+  // Déclencher un event pour la mise à jour des données
+  if (inputX) {
+    inputX.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+};
+
+window._gallery3dFocalReset = function (event, index) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  // Reset à 50%, 50%
+  var container = document.getElementById("focal-picker-" + index);
+  if (container) {
+    var dot = container.querySelector(".focal-dot");
+    if (dot) {
+      dot.style.left = "50%";
+      dot.style.top = "50%";
+    }
+  }
+
+  var label = document.getElementById("focal-label-" + index);
+  if (label) {
+    label.textContent = "50%, 50%";
+  }
+
+  var inputX = document.getElementById("tpl-item-focalX-" + index);
+  var inputY = document.getElementById("tpl-item-focalY-" + index);
+  if (inputX) inputX.value = 50;
+  if (inputY) inputY.value = 50;
+
+  if (inputX) {
+    inputX.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+};
+
 window.ATLANTIS_TEMPLATES.gallery3d = {
   name: "Galerie 3D",
   icon: "🎠",
@@ -194,6 +266,8 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
             "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=400",
             "https://images.unsplash.com/photo-1574144611937-0df059b5ef3e?w=400",
           ],
+          focalX: 50,
+          focalY: 50,
         },
         {
           image:
@@ -205,6 +279,8 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           extraImages: [
             "https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=400",
           ],
+          focalX: 50,
+          focalY: 30,
         },
         {
           image:
@@ -214,6 +290,8 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           description:
             "Ses yeux verts hypnotiques lui ont valu son nom. Émeraude est une chatte douce et câline.",
           extraImages: [],
+          focalX: 50,
+          focalY: 50,
         },
       ],
     };
@@ -291,6 +369,9 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
 
   renderItemCard: function (item, index, helpers, showDetailPopup) {
     var self = this;
+    var focalX = item.focalX !== undefined ? item.focalX : 50;
+    var focalY = item.focalY !== undefined ? item.focalY : 50;
+
     var extraImagesHTML = (item.extraImages || [])
       .map(function (url, ei) {
         return (
@@ -327,6 +408,112 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       })
       .join("");
 
+    // Focal Point Picker HTML
+    var focalPickerHTML =
+      '<div class="tpl-field-group" style="margin-top:16px;">' +
+      '<label class="tpl-field-label">📍 Point focal (cliquez sur l\'image)</label>' +
+      '<div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;">' +
+      // Miniature cliquable
+      '<div id="focal-picker-' +
+      index +
+      '" ' +
+      'onclick="window._gallery3dFocalPick(event, ' +
+      index +
+      ')" ' +
+      'style="' +
+      "position:relative;" +
+      "width:140px;" +
+      "height:95px;" +
+      "border-radius:8px;" +
+      "overflow:hidden;" +
+      "cursor:crosshair;" +
+      "border:2px solid #334155;" +
+      "flex-shrink:0;" +
+      "background:#1e293b;" +
+      '">' +
+      '<img src="' +
+      helpers.escapeHtml(item.image || "") +
+      '" ' +
+      'style="width:100%;height:100%;object-fit:cover;pointer-events:none;" ' +
+      "onerror=\"this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 140 95%22><rect fill=%22%23374151%22 width=%22140%22 height=%2295%22/><text x=%2270%22 y=%2252%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2210%22>Image</text></svg>'\">" +
+      // Point focal (dot)
+      '<div class="focal-dot" style="' +
+      "position:absolute;" +
+      "width:16px;" +
+      "height:16px;" +
+      "background:rgba(239,68,68,0.9);" +
+      "border:2px solid white;" +
+      "border-radius:50%;" +
+      "box-shadow:0 2px 8px rgba(0,0,0,0.5);" +
+      "transform:translate(-50%,-50%);" +
+      "pointer-events:none;" +
+      "left:" +
+      focalX +
+      "%;" +
+      "top:" +
+      focalY +
+      "%;" +
+      '"></div>' +
+      // Crosshair overlay
+      '<div style="' +
+      "position:absolute;inset:0;" +
+      "pointer-events:none;" +
+      "background:linear-gradient(to right, transparent 49.5%, rgba(255,255,255,0.15) 49.5%, rgba(255,255,255,0.15) 50.5%, transparent 50.5%)," +
+      "linear-gradient(to bottom, transparent 49.5%, rgba(255,255,255,0.15) 49.5%, rgba(255,255,255,0.15) 50.5%, transparent 50.5%);" +
+      '"></div>' +
+      "</div>" +
+      // Info + Reset button
+      '<div style="flex:1;">' +
+      '<div style="color:#94a3b8;font-size:11px;margin-bottom:8px;">' +
+      "Cliquez sur la miniature pour définir le point de focus. " +
+      "C'est la zone qui restera visible si l'image est recadrée." +
+      "</div>" +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+      '<span style="color:#e2e8f0;font-size:12px;">Position: <span id="focal-label-' +
+      index +
+      '" style="color:#6366f1;font-weight:600;">' +
+      focalX +
+      "%, " +
+      focalY +
+      "%</span></span>" +
+      '<button type="button" onclick="window._gallery3dFocalReset(event, ' +
+      index +
+      ')" ' +
+      'style="' +
+      "background:#1e293b;" +
+      "border:1px solid #334155;" +
+      "color:#94a3b8;" +
+      "padding:4px 10px;" +
+      "border-radius:6px;" +
+      "font-size:11px;" +
+      "cursor:pointer;" +
+      '">↺ Centrer</button>' +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+      // Hidden inputs pour stocker les valeurs
+      '<input type="hidden" id="tpl-item-focalX-' +
+      index +
+      '" name="item_focalX_' +
+      index +
+      '" ' +
+      'data-item-field="focalX" data-index="' +
+      index +
+      '" value="' +
+      focalX +
+      '">' +
+      '<input type="hidden" id="tpl-item-focalY-' +
+      index +
+      '" name="item_focalY_' +
+      index +
+      '" ' +
+      'data-item-field="focalY" data-index="' +
+      index +
+      '" value="' +
+      focalY +
+      '">' +
+      "</div>";
+
     return (
       '<div class="tpl-contact-card tpl-item-card" data-item-index="' +
       index +
@@ -345,6 +532,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "</button>" +
       "</div>" +
       '<div class="tpl-contact-fields" style="padding:16px;">' +
+      // URL Image
       '<div class="tpl-field-group">' +
       '<label class="tpl-field-label" for="tpl-item-image-' +
       index +
@@ -361,7 +549,10 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       helpers.escapeHtml(item.image || "") +
       '" placeholder="https://...">' +
       "</div>" +
-      '<div class="tpl-field-group">' +
+      // ===== FOCAL POINT PICKER =====
+      focalPickerHTML +
+      // Hover text
+      '<div class="tpl-field-group" style="margin-top:16px;">' +
       '<label class="tpl-field-label" for="tpl-item-hoverText-' +
       index +
       '">Texte au survol</label>' +
@@ -377,6 +568,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       helpers.escapeHtml(item.hoverText || "👁 Voir détails") +
       '" placeholder="👁 Voir détails">' +
       "</div>" +
+      // Détails popup
       '<div class="tpl-detail-fields" style="' +
       "margin-top:16px;" +
       "padding-top:16px;" +
@@ -441,7 +633,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     );
   },
 
-  // ===== APERÇU LIVE INTERACTIF - v1.4 amélioré =====
+  // ===== APERÇU LIVE INTERACTIF - v1.9 avec focal point =====
   renderPreview: function (data, helpers) {
     var settings = data.settings || {
       showDetailPopup: true,
@@ -472,6 +664,8 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       .map(function (item, i) {
         var offset = i - activeIndex;
         var transform, zIndex, opacity, filter, isActive;
+        var focalX = item.focalX !== undefined ? item.focalX : 50;
+        var focalY = item.focalY !== undefined ? item.focalY : 50;
 
         if (offset === 0) {
           // Carte active - au centre, en avant
@@ -538,6 +732,11 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           helpers.escapeHtml(item.image || "") +
           '" alt="" style="' +
           "width:100%;height:100%;object-fit:cover;border-radius:16px;pointer-events:none;" +
+          "object-position:" +
+          focalX +
+          "% " +
+          focalY +
+          "%;" +
           '" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 280 190%22><rect fill=%22%23374151%22 width=%22280%22 height=%22190%22/><text x=%22140%22 y=%22100%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2212%22>Image</text></svg>\'">' +
           // Reflet
           '<div style="' +
@@ -548,7 +747,11 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           helpers.escapeHtml(item.image || "") +
           "');" +
           "background-size:cover;" +
-          "background-position:bottom center;" +
+          "background-position:" +
+          focalX +
+          "% " +
+          focalY +
+          "%;" +
           "transform:scaleY(-1);" +
           "border-radius:16px;" +
           "-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.25) 0%,transparent 70%);" +
@@ -648,27 +851,19 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "gap:10px;" +
       "color:#64748b;" +
       "font-size:11px;" +
-      "flex-wrap:wrap;" +
       '">' +
-      '<span id="preview-gallery-counter" style="' +
-      "background:rgba(99,102,241,0.2);" +
-      "padding:5px 12px;" +
-      "border-radius:12px;" +
-      "color:#a5b4fc;" +
-      "font-weight:600;" +
-      '">' +
+      '<span style="color:#94a3b8;font-size:12px;" id="preview-gallery-counter">' +
       (activeIndex + 1) +
       " / " +
       items.length +
       "</span>" +
-      "<span>🖱️ Clic image active = détails</span>" +
-      '<span style="color:#475569;">💡 Flèches/clic latéral = naviguer</span>' +
+      '<span style="opacity:0.5;">•</span>' +
+      '<span style="color:#6366f1;">Cliquez sur l\'image active pour voir les détails</span>' +
       "</div>";
 
-    // Structure: wrapper centré contenant tooltips + stage avec flèches intégrées
     return (
       stylesHTML +
-      '<div style="display:flex;flex-direction:column;align-items:center;width:100%;">' +
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;">' +
       infoHTML +
       '<div class="preview-gallery-stage">' +
       navHTML +
@@ -680,49 +875,61 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     );
   },
 
-  // ===== GÉNÉRATION JS FINALE =====
-  generateJS: function (objectName, config, timestamp) {
+  // ===== GÉNÉRATION DU JS FINAL =====
+  generateJS: function (objectName, data) {
     var self = this;
-    var settings = config.settings || {
+    var settings = data.settings || {
       showDetailPopup: true,
       extraImagesLabel: "Plus de photos",
     };
+    var items = data.items || [];
 
-    var itemsArray = (config.items || []).map(function (item) {
-      var extraImgs = (item.extraImages || []).map(function (url) {
-        return '"' + self.escapeJS(url) + '"';
-      });
-      return (
-        "{" +
-        'image:"' +
-        self.escapeJS(item.image || "") +
-        '",' +
-        'hoverText:"' +
-        self.escapeJS(item.hoverText || "👁 Voir détails") +
-        '",' +
-        'title:"' +
-        self.escapeJS(item.title || "") +
-        '",' +
-        'description:"' +
-        self.escapeJS(item.description || "") +
-        '",' +
-        "extraImages:[" +
-        extraImgs.join(",") +
-        "]" +
-        "}"
-      );
-    });
-    var itemsJSON = "[" + itemsArray.join(",") + "]";
+    // Construire le tableau d'items avec focal points
+    var itemsCode = items
+      .map(function (item) {
+        var focalX = item.focalX !== undefined ? item.focalX : 50;
+        var focalY = item.focalY !== undefined ? item.focalY : 50;
+
+        var extraImgsCode = (item.extraImages || [])
+          .map(function (url) {
+            return '"' + self.escapeJS(url) + '"';
+          })
+          .join(",");
+
+        return (
+          "{" +
+          'image:"' +
+          self.escapeJS(item.image || "") +
+          '",' +
+          'hoverText:"' +
+          self.escapeJS(item.hoverText || "👁 Voir détails") +
+          '",' +
+          'title:"' +
+          self.escapeJS(item.title || "") +
+          '",' +
+          'description:"' +
+          self.escapeJS(item.description || "") +
+          '",' +
+          "focalX:" +
+          focalX +
+          "," +
+          "focalY:" +
+          focalY +
+          "," +
+          "extraImages:[" +
+          extraImgsCode +
+          "]" +
+          "}"
+        );
+      })
+      .join(",\n  ");
 
     return (
-      "/**\n" +
-      " * 🎠 Popup Gallery 3D - " +
+      "/**\n * 🎠 Popup Gallery 3D - " +
       objectName +
-      "\n" +
-      " * Généré le " +
-      timestamp +
-      "\n" +
-      " */\n" +
+      "\n * Généré le " +
+      new Date().toISOString().replace("T", " ").substr(0, 19) +
+      "\n */\n" +
       "(function(){\n" +
       '"use strict";\n' +
       "\n" +
@@ -737,9 +944,9 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       self.escapeJS(settings.extraImagesLabel || "Plus de photos") +
       '"\n' +
       "};\n" +
-      "var ITEMS = " +
-      itemsJSON +
-      ";\n" +
+      "var ITEMS = [\n  " +
+      itemsCode +
+      "\n];\n" +
       "\n" +
       "var overlay = null;\n" +
       "var activeIndex = 0;\n" +
@@ -748,12 +955,13 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       '  if (document.getElementById("popup-" + ID + "-styles")) return;\n' +
       '  var s = document.createElement("style");\n' +
       '  s.id = "popup-" + ID + "-styles";\n' +
-      '  s.textContent = ".popup-" + ID + "-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(10px);z-index:99999;display:flex;opacity:0;transition:opacity 0.5s ease;perspective:1000px;overflow:hidden;font-family:sans-serif}" +\n' +
+      "  s.textContent = " +
+      '".popup-" + ID + "-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(10px);z-index:99999;display:flex;opacity:0;transition:opacity 0.5s ease;perspective:1000px;overflow:hidden;font-family:sans-serif}" +\n' +
       '    ".popup-" + ID + "-overlay.active{opacity:1}" +\n' +
       '    ".popup-" + ID + "-carousel{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);width:100%;height:60%;display:flex;justify-content:center;align-items:center;transform-style:preserve-3d}" +\n' +
       '    ".popup-" + ID + "-card{position:absolute;width:500px;height:350px;background:#000;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,0.8);transition:all 0.6s cubic-bezier(0.25,0.8,0.25,1);cursor:pointer;overflow:visible;will-change:transform,opacity,filter;backface-visibility:hidden}" +\n' +
       '    ".popup-" + ID + "-card img{width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:12px}" +\n' +
-      '    ".popup-" + ID + "-reflection{position:absolute;top:100%;left:0;width:100%;height:60%;margin-top:10px;background-size:cover;background-position:bottom center;transform:scaleY(-1);border-radius:12px;pointer-events:none;-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%);mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%)}" +\n' +
+      '    ".popup-" + ID + "-reflection{position:absolute;top:100%;left:0;width:100%;height:60%;margin-top:10px;background-size:cover;transform:scaleY(-1);border-radius:12px;pointer-events:none;-webkit-mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%);mask-image:linear-gradient(to top,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0.1) 50%,transparent 100%)}" +\n' +
       '    ".popup-" + ID + "-hover{position:absolute;bottom:15px;left:50%;transform:translateX(-50%) translateY(10px);background:rgba(0,0,0,0.7);color:white;padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;transition:all 0.3s ease;pointer-events:none;white-space:nowrap}" +\n' +
       '    ".popup-" + ID + "-card.active:hover .popup-" + ID + "-hover{opacity:1;transform:translateX(-50%) translateY(0)}" +\n' +
       '    ".popup-" + ID + "-card.active:hover{transform:translateX(0) translateZ(270px) rotateY(0deg) scale(1.05)!important;box-shadow:0 30px 80px rgba(0,0,0,0.9),0 0 40px rgba(255,255,255,0.15)}" +\n' +
@@ -788,9 +996,11 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       '  var cardsHTML = "";\n' +
       "  for (var i = 0; i < ITEMS.length; i++) {\n" +
       "    var imgUrl = ITEMS[i].image.replace(/'/g, \"\\\\'\");\n" +
+      "    var fX = ITEMS[i].focalX || 50;\n" +
+      "    var fY = ITEMS[i].focalY || 50;\n" +
       "    cardsHTML += '<div class=\"popup-' + ID + '-card\" data-index=\"' + i + '\">' +\n" +
-      "      '<img src=\"' + ITEMS[i].image + '\" alt=\"\">' +\n" +
-      "      '<div class=\"popup-' + ID + '-reflection\" style=\"background-image:url(\\'' + imgUrl + '\\')\">' + '</div>' +\n" +
+      "      '<img src=\"' + ITEMS[i].image + '\" alt=\"\" style=\"object-position:' + fX + '% ' + fY + '%\">' +\n" +
+      "      '<div class=\"popup-' + ID + '-reflection\" style=\"background-image:url(\\'' + imgUrl + '\\');background-position:' + fX + '% ' + fY + '%\">' + '</div>' +\n" +
       "      '<div class=\"popup-' + ID + '-hover\">' + ITEMS[i].hoverText + '</div>' +\n" +
       "    '</div>';\n" +
       "  }\n" +
@@ -865,6 +1075,8 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "\n" +
       "function openDetail(index) {\n" +
       "  var item = ITEMS[index];\n" +
+      "  var fX = item.focalX || 50;\n" +
+      "  var fY = item.focalY || 50;\n" +
       '  var d = document.createElement("div");\n' +
       '  d.className = "popup-" + ID + "-detail";\n' +
       '  d.id = "popup-" + ID + "-detail";\n' +
@@ -880,7 +1092,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "\n" +
       "  d.innerHTML = '<button class=\"popup-' + ID + '-detail-close\">✕</button>' +\n" +
       "    '<div class=\"popup-' + ID + '-detail-content\">' +\n" +
-      "    '<img id=\"popup-' + ID + '-main-img\" src=\"' + item.image + '\" style=\"width:100%;max-height:450px;object-fit:cover;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.5);\">' +\n" +
+      "    '<img id=\"popup-' + ID + '-main-img\" src=\"' + item.image + '\" style=\"width:100%;max-height:450px;object-fit:cover;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.5);object-position:' + fX + '% ' + fY + '%\">' +\n" +
       "    '<h2 style=\"color:white;font-size:32px;margin:30px 0 15px;font-weight:600;\">' + item.title + '</h2>' +\n" +
       "    '<p style=\"color:rgba(255,255,255,0.8);font-size:17px;line-height:1.7;margin-bottom:35px;\">' + item.description + '</p>' +\n" +
       "    extrasHTML +\n" +
@@ -909,10 +1121,12 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "\n" +
       "function openLightbox(index) {\n" +
       "  var item = ITEMS[index];\n" +
+      "  var fX = item.focalX || 50;\n" +
+      "  var fY = item.focalY || 50;\n" +
       '  var lb = document.createElement("div");\n' +
       '  lb.className = "popup-" + ID + "-lightbox";\n' +
       '  lb.id = "popup-" + ID + "-lightbox";\n' +
-      "  lb.innerHTML = '<img src=\"' + item.image + '\" alt=\"\">';\n" +
+      "  lb.innerHTML = '<img src=\"' + item.image + '\" alt=\"\" style=\"object-position:' + fX + '% ' + fY + '%\">';\n" +
       "  document.body.appendChild(lb);\n" +
       '  setTimeout(function() { lb.classList.add("active"); }, 10);\n' +
       "  lb.onclick = closeLightbox;\n" +
@@ -974,4 +1188,4 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
   },
 };
 
-console.log("🎠 Template Gallery 3D v1.4 chargé (preview améliorée)");
+console.log("🎠 Template Gallery 3D v1.9 chargé (focal point picker)");

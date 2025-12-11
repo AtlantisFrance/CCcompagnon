@@ -8,6 +8,7 @@
  * v2.6 - 2024-12-10 - Raccourcis console dynamiques depuis objects-config.js
  * v2.7 - 2024-12-11 - Support Gallery3D (items, extraImages, settings)
  * v2.8 - 2024-12-11 - Fix Gallery3D: focalX/focalY int + update miniature on URL change
+ * v2.9 - 2024-12-11 - Support focal points sur extraImages (objets {url, focalX, focalY})
  * ============================================
  */
 
@@ -898,23 +899,55 @@
     }
 
     // ========================================
-    // 🖼️ EXTRA IMAGE FIELDS (data-extra-field) - v2.7
+    // 🖼️ EXTRA IMAGE FIELDS (data-extra-field) - v2.9
     // ========================================
     if (target.dataset.extraField) {
       const itemIndex = parseInt(target.dataset.itemIndex);
       const extraIndex = parseInt(target.dataset.extraIndex);
+      const field = target.dataset.extraField; // "url", "focalX", "focalY"
 
       if (!state.templateData.items?.[itemIndex]?.extraImages) return;
 
-      state.templateData.items[itemIndex].extraImages[extraIndex] =
-        target.value;
+      // S'assurer que l'élément est un objet
+      let extraItem =
+        state.templateData.items[itemIndex].extraImages[extraIndex];
+      if (typeof extraItem === "string") {
+        // Migration: convertir string en objet
+        extraItem = { url: extraItem, focalX: 50, focalY: 50 };
+        state.templateData.items[itemIndex].extraImages[extraIndex] = extraItem;
+      }
+
+      // Mettre à jour le bon champ
+      if (field === "focalX" || field === "focalY") {
+        extraItem[field] = parseInt(target.value) || 50;
+        console.log(
+          `🎯 Extra[${itemIndex}][${extraIndex}].${field} = ${extraItem[field]} (int)`
+        );
+      } else {
+        extraItem[field] = target.value;
+        console.log(
+          `🖼️ Extra[${itemIndex}][${extraIndex}].${field} =`,
+          target.value
+        );
+      }
+
+      // Si l'URL change, mettre à jour la miniature du focal picker
+      if (field === "url") {
+        const focalPicker = document.getElementById(
+          `extra-focal-picker-${itemIndex}-${extraIndex}`
+        );
+        if (focalPicker) {
+          const img = focalPicker.querySelector("img");
+          if (img) {
+            img.src = target.value || "";
+            console.log(
+              `🖼️ Extra focal picker miniature mise à jour [${itemIndex}][${extraIndex}]`
+            );
+          }
+        }
+      }
+
       state.hasChanges = true;
-
-      console.log(
-        `🖼️ Item[${itemIndex}].extraImages[${extraIndex}] =`,
-        target.value
-      );
-
       updateStatus();
       updatePreview();
       return;
@@ -1146,13 +1179,18 @@
       state.templateData.items[itemIndex].extraImages = [];
     }
 
-    state.templateData.items[itemIndex].extraImages.push("");
+    // v2.9: Créer un objet avec url et focal points (pas une simple string)
+    state.templateData.items[itemIndex].extraImages.push({
+      url: "",
+      focalX: 50,
+      focalY: 50,
+    });
     state.hasChanges = true;
 
     // Mettre à jour SEULEMENT la liste des items
     updateItemsOnly();
 
-    console.log(`🖼️ Extra image ajoutée à Item[${itemIndex}]`);
+    console.log(`🖼️ Extra image (objet) ajoutée à Item[${itemIndex}]`);
   }
 
   function removeExtraImage(itemIndex, extraIndex) {

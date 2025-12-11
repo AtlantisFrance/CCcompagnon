@@ -6,6 +6,7 @@
  * v1.0 - 2024-12-11 - Création initiale
  * v1.1 - 2024-12-11 - Standardisation classes popup-{ID}-*
  * v1.2 - 2024-12-11 - Support Focal Point (focalX, focalY) pour object-position
+ * v1.3 - 2024-12-11 - Support Focal Point sur extraImages (objets {url, focalX, focalY})
  * ============================================
  */
 
@@ -14,7 +15,7 @@ if (!defined('ATLANTIS_API')) {
 }
 
 /**
- * Génère le JS pour une popup Gallery 3D avec focal point
+ * Génère le JS pour une popup Gallery 3D avec focal point sur images principales ET extras
  */
 function generateGallery3dPopupJS($objectName, $config, $timestamp) {
     
@@ -28,7 +29,7 @@ function generateGallery3dPopupJS($objectName, $config, $timestamp) {
     $itemsArray = [];
     
     foreach ($items as $item) {
-        // Récupérer les focal points (défaut: 50%)
+        // Récupérer les focal points de l'image principale (défaut: 50%)
         $focalX = isset($item['focalX']) ? intval($item['focalX']) : 50;
         $focalY = isset($item['focalY']) ? intval($item['focalY']) : 50;
         
@@ -36,10 +37,23 @@ function generateGallery3dPopupJS($objectName, $config, $timestamp) {
         $focalX = max(0, min(100, $focalX));
         $focalY = max(0, min(100, $focalY));
         
+        // Traiter les extraImages (v1.3: support objets avec focal)
         $extraImages = [];
         if (!empty($item['extraImages']) && is_array($item['extraImages'])) {
-            foreach ($item['extraImages'] as $url) {
-                $extraImages[] = '"' . escapeJS($url) . '"';
+            foreach ($item['extraImages'] as $extra) {
+                // Support ancien format (string) et nouveau format (objet)
+                if (is_array($extra) || is_object($extra)) {
+                    $extra = (array) $extra;
+                    $extraUrl = escapeJS($extra['url'] ?? '');
+                    $extraFX = isset($extra['focalX']) ? intval($extra['focalX']) : 50;
+                    $extraFY = isset($extra['focalY']) ? intval($extra['focalY']) : 50;
+                    $extraFX = max(0, min(100, $extraFX));
+                    $extraFY = max(0, min(100, $extraFY));
+                    $extraImages[] = '{url:"' . $extraUrl . '",focalX:' . $extraFX . ',focalY:' . $extraFY . '}';
+                } else {
+                    // Ancien format: string simple → convertir en objet avec focal 50/50
+                    $extraImages[] = '{url:"' . escapeJS($extra) . '",focalX:50,focalY:50}';
+                }
             }
         }
         
@@ -60,7 +74,7 @@ function generateGallery3dPopupJS($objectName, $config, $timestamp) {
 /**
  * 🎠 Popup Gallery 3D - {$objectName}
  * Généré le {$timestamp}
- * Avec support Focal Point pour le cadrage d'image
+ * Avec support Focal Point pour images principales ET supplémentaires
  */
 (function(){
 "use strict";
@@ -128,8 +142,8 @@ function show() {
     '</div>';
   }
 
-  o.innerHTML = '<button class="popup-' + ID + '-nav popup-' + ID + '-prev">❮</button>' +
-    '<button class="popup-' + ID + '-nav popup-' + ID + '-next">❯</button>' +
+  o.innerHTML = '<button class="popup-' + ID + '-nav popup-' + ID + '-prev">⮮</button>' +
+    '<button class="popup-' + ID + '-nav popup-' + ID + '-next">⮯</button>' +
     '<div class="popup-' + ID + '-carousel">' + cardsHTML + '</div>';
 
   document.body.appendChild(o);
@@ -208,7 +222,11 @@ function openDetail(index) {
   if (item.extraImages && item.extraImages.length > 0) {
     extrasHTML = '<p style="color:rgba(255,255,255,0.5);font-size:14px;text-transform:uppercase;letter-spacing:2px;margin:35px 0 15px;">' + SETTINGS.extraImagesLabel + '</p><div style="display:flex;gap:15px;flex-wrap:wrap;">';
     for (var e = 0; e < item.extraImages.length; e++) {
-      extrasHTML += '<img src="' + item.extraImages[e] + '" data-extra="' + e + '" class="popup-' + ID + '-extra-img">';
+      var extra = item.extraImages[e];
+      var extraUrl = typeof extra === "object" ? extra.url : extra;
+      var extraFX = typeof extra === "object" && extra.focalX !== undefined ? extra.focalX : 50;
+      var extraFY = typeof extra === "object" && extra.focalY !== undefined ? extra.focalY : 50;
+      extrasHTML += '<img src="' + extraUrl + '" data-extra="' + e + '" data-focal-x="' + extraFX + '" data-focal-y="' + extraFY + '" class="popup-' + ID + '-extra-img" style="object-position:' + extraFX + '% ' + extraFY + '%">';
     }
     extrasHTML += "</div>";
   }
@@ -226,10 +244,14 @@ function openDetail(index) {
   setTimeout(function() { d.style.display = "block"; d.classList.add("active"); }, 10);
 
   d.querySelector(".popup-" + ID + "-detail-close").onclick = closeDetail;
-  d.onclick = function(e) {
-    if (e.target === d) closeDetail();
-    if (e.target.dataset.extra !== undefined) {
-      document.getElementById("popup-" + ID + "-main-img").src = item.extraImages[e.target.dataset.extra];
+  d.onclick = function(ev) {
+    if (ev.target === d) closeDetail();
+    if (ev.target.dataset.extra !== undefined) {
+      var mainImg = document.getElementById("popup-" + ID + "-main-img");
+      var newFX = ev.target.dataset.focalX || 50;
+      var newFY = ev.target.dataset.focalY || 50;
+      mainImg.src = ev.target.src;
+      mainImg.style.objectPosition = newFX + "% " + newFY + "%";
     }
   };
 }

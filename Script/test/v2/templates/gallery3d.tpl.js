@@ -14,6 +14,7 @@
  * v1.9 - 2024-12-11 - Focal Point Picker: clic sur miniature pour choisir le point focal
  * v2.0 - 2024-12-11 - Fix Focal: conteneur carré + contain + calcul coordonnées correct
  * v2.1 - 2024-12-11 - Fix Focal: dispatch event pour X ET Y (preview temps réel)
+ * v3.0 - 2024-12-11 - Focal Point sur images supplémentaires (extraImages devient objets)
  * ============================================
  */
 
@@ -106,7 +107,10 @@ window._gallery3dPreviewShowDetail = function (index) {
   var old = document.getElementById("preview-detail-overlay");
   if (old) old.remove();
 
-  // Créer le détail
+  var focalX = item.focalX !== undefined ? item.focalX : 50;
+  var focalY = item.focalY !== undefined ? item.focalY : 50;
+
+  // Créer le détail avec support focal sur extras
   var extraImagesHTML = "";
   if (item.extraImages && item.extraImages.length > 0) {
     extraImagesHTML =
@@ -114,13 +118,35 @@ window._gallery3dPreviewShowDetail = function (index) {
       (state.settings.extraImagesLabel || "Plus de photos") +
       "</p>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-    item.extraImages.forEach(function (url, ei) {
+    item.extraImages.forEach(function (extra, ei) {
+      var extraUrl = typeof extra === "object" ? extra.url : extra;
+      var extraFX =
+        typeof extra === "object" && extra.focalX !== undefined
+          ? extra.focalX
+          : 50;
+      var extraFY =
+        typeof extra === "object" && extra.focalY !== undefined
+          ? extra.focalY
+          : 50;
       extraImagesHTML +=
         '<img src="' +
-        url +
-        '" onclick="window._gallery3dPreviewSetMainImg(\'' +
-        url.replace(/'/g, "\\'") +
-        '\')" style="width:60px;height:45px;object-fit:cover;border-radius:6px;cursor:pointer;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">';
+        extraUrl +
+        '" ' +
+        'data-extra="' +
+        ei +
+        '" ' +
+        'data-focal-x="' +
+        extraFX +
+        '" ' +
+        'data-focal-y="' +
+        extraFY +
+        '" ' +
+        'style="width:60px;height:45px;object-fit:cover;object-position:' +
+        extraFX +
+        "% " +
+        extraFY +
+        '%;border-radius:6px;cursor:pointer;opacity:0.7;transition:opacity 0.2s;" ' +
+        'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">';
     });
     extraImagesHTML += "</div>";
   }
@@ -130,7 +156,7 @@ window._gallery3dPreviewShowDetail = function (index) {
     "position:absolute;inset:0;background:rgba(0,0,0,0.95);z-index:200;" +
     "display:flex;align-items:center;justify-content:center;" +
     "animation:fadeIn 0.3s ease;" +
-    '" onclick="if(event.target===this)this.remove()">' +
+    '">' +
     '<div style="' +
     "width:90%;max-width:500px;max-height:90%;overflow-y:auto;" +
     "background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);" +
@@ -144,9 +170,9 @@ window._gallery3dPreviewShowDetail = function (index) {
     '" style="' +
     "width:100%;height:200px;object-fit:cover;border-radius:16px 16px 0 0;" +
     "object-position:" +
-    (item.focalX || 50) +
+    focalX +
     "% " +
-    (item.focalY || 50) +
+    focalY +
     "%;" +
     '">' +
     '<button onclick="document.getElementById(\'preview-detail-overlay\').remove()" style="' +
@@ -170,6 +196,26 @@ window._gallery3dPreviewShowDetail = function (index) {
   var container = document.getElementById("tpl-preview-stage");
   if (container) {
     container.insertAdjacentHTML("beforeend", detailHTML);
+
+    // Ajouter le listener pour les clics sur les extras
+    var overlay = document.getElementById("preview-detail-overlay");
+    if (overlay) {
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) {
+          overlay.remove();
+          return;
+        }
+        if (e.target.dataset.extra !== undefined) {
+          var mainImg = document.getElementById("preview-detail-main-img");
+          if (mainImg) {
+            mainImg.src = e.target.src;
+            var newFX = e.target.dataset.focalX || 50;
+            var newFY = e.target.dataset.focalY || 50;
+            mainImg.style.objectPosition = newFX + "% " + newFY + "%";
+          }
+        }
+      });
+    }
   }
 };
 
@@ -178,7 +224,7 @@ window._gallery3dPreviewSetMainImg = function (url) {
   if (img) img.src = url;
 };
 
-// ===== FOCAL POINT PICKER =====
+// ===== FOCAL POINT PICKER - IMAGE PRINCIPALE =====
 window._gallery3dFocalPick = function (event, index) {
   event.stopPropagation();
   var container = event.currentTarget;
@@ -268,38 +314,8 @@ window._gallery3dFocalReset = function (event, index) {
   // Reset à 50%, 50%
   var container = document.getElementById("focal-picker-" + index);
   if (container) {
-    var img = container.querySelector("img");
     var dot = container.querySelector(".focal-dot");
-
-    if (dot && img && img.naturalWidth) {
-      // Calculer la position du centre de l'image dans le conteneur
-      var containerW = container.offsetWidth;
-      var containerH = container.offsetHeight;
-      var imgW = img.naturalWidth;
-      var imgH = img.naturalHeight;
-      var imgRatio = imgW / imgH;
-      var containerRatio = containerW / containerH;
-
-      var displayW, displayH, offsetX, offsetY;
-      if (imgRatio > containerRatio) {
-        displayW = containerW;
-        displayH = containerW / imgRatio;
-        offsetX = 0;
-        offsetY = (containerH - displayH) / 2;
-      } else {
-        displayH = containerH;
-        displayW = containerH * imgRatio;
-        offsetX = (containerW - displayW) / 2;
-        offsetY = 0;
-      }
-
-      // Centre de l'image = offset + display/2
-      var centerX = offsetX + displayW / 2;
-      var centerY = offsetY + displayH / 2;
-      dot.style.left = (centerX / containerW) * 100 + "%";
-      dot.style.top = (centerY / containerH) * 100 + "%";
-    } else {
-      // Fallback si image pas chargée
+    if (dot) {
       dot.style.left = "50%";
       dot.style.top = "50%";
     }
@@ -324,12 +340,107 @@ window._gallery3dFocalReset = function (event, index) {
   }
 };
 
+// ===== FOCAL POINT PICKER - IMAGES SUPPLÉMENTAIRES (v3.0) =====
+window._gallery3dExtraFocalPick = function (event, itemIndex, extraIndex) {
+  event.stopPropagation();
+  var container = event.currentTarget;
+  var img = container.querySelector("img");
+  var rect = container.getBoundingClientRect();
+
+  var clickX = event.clientX - rect.left;
+  var clickY = event.clientY - rect.top;
+  var containerW = rect.width;
+  var containerH = rect.height;
+  var imgW = img.naturalWidth || containerW;
+  var imgH = img.naturalHeight || containerH;
+  var imgRatio = imgW / imgH;
+  var containerRatio = containerW / containerH;
+
+  var displayW, displayH, offsetX, offsetY;
+  if (imgRatio > containerRatio) {
+    displayW = containerW;
+    displayH = containerW / imgRatio;
+    offsetX = 0;
+    offsetY = (containerH - displayH) / 2;
+  } else {
+    displayH = containerH;
+    displayW = containerH * imgRatio;
+    offsetX = (containerW - displayW) / 2;
+    offsetY = 0;
+  }
+
+  var relX = (clickX - offsetX) / displayW;
+  var relY = (clickY - offsetY) / displayH;
+  var x = Math.round(relX * 100);
+  var y = Math.round(relY * 100);
+  x = Math.max(0, Math.min(100, x));
+  y = Math.max(0, Math.min(100, y));
+
+  var dot = container.querySelector(".focal-dot");
+  if (dot) {
+    var dotLeft = offsetX + (displayW * x) / 100;
+    var dotTop = offsetY + (displayH * y) / 100;
+    dot.style.left = (dotLeft / containerW) * 100 + "%";
+    dot.style.top = (dotTop / containerH) * 100 + "%";
+  }
+
+  var label = document.getElementById(
+    "extra-focal-label-" + itemIndex + "-" + extraIndex
+  );
+  if (label) label.textContent = x + "%, " + y + "%";
+
+  var inputX = document.getElementById(
+    "tpl-extra-focalX-" + itemIndex + "-" + extraIndex
+  );
+  var inputY = document.getElementById(
+    "tpl-extra-focalY-" + itemIndex + "-" + extraIndex
+  );
+  if (inputX) inputX.value = x;
+  if (inputY) inputY.value = y;
+
+  if (inputX) inputX.dispatchEvent(new Event("input", { bubbles: true }));
+  if (inputY) inputY.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
+window._gallery3dExtraFocalReset = function (event, itemIndex, extraIndex) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  var container = document.getElementById(
+    "extra-focal-picker-" + itemIndex + "-" + extraIndex
+  );
+  if (container) {
+    var dot = container.querySelector(".focal-dot");
+    if (dot) {
+      dot.style.left = "50%";
+      dot.style.top = "50%";
+    }
+  }
+
+  var label = document.getElementById(
+    "extra-focal-label-" + itemIndex + "-" + extraIndex
+  );
+  if (label) label.textContent = "50%, 50%";
+
+  var inputX = document.getElementById(
+    "tpl-extra-focalX-" + itemIndex + "-" + extraIndex
+  );
+  var inputY = document.getElementById(
+    "tpl-extra-focalY-" + itemIndex + "-" + extraIndex
+  );
+  if (inputX) inputX.value = 50;
+  if (inputY) inputY.value = 50;
+
+  if (inputX) inputX.dispatchEvent(new Event("input", { bubbles: true }));
+  if (inputY) inputY.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
 window.ATLANTIS_TEMPLATES.gallery3d = {
   name: "Galerie 3D",
   icon: "🎠",
   description: "Carrousel 3D avec vue détaillée",
 
-  // ===== DONNÉES PAR DÉFAUT =====
+  // ===== DONNÉES PAR DÉFAUT (v3.0 - extraImages comme objets) =====
   getDefaultData: function () {
     return {
       settings: {
@@ -345,8 +456,16 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           description:
             "Un magnifique chat roux au regard perçant. Félix adore se prélasser au soleil et chasser les papillons dans le jardin.",
           extraImages: [
-            "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=400",
-            "https://images.unsplash.com/photo-1574144611937-0df059b5ef3e?w=400",
+            {
+              url: "https://images.unsplash.com/photo-1519052537078-e6302a4968d4?w=400",
+              focalX: 50,
+              focalY: 50,
+            },
+            {
+              url: "https://images.unsplash.com/photo-1574144611937-0df059b5ef3e?w=400",
+              focalX: 50,
+              focalY: 50,
+            },
           ],
           focalX: 50,
           focalY: 50,
@@ -359,7 +478,11 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           description:
             "Ce chat tigré est toujours en quête d'aventure. Sa curiosité légendaire l'amène à explorer chaque recoin de la maison.",
           extraImages: [
-            "https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=400",
+            {
+              url: "https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=400",
+              focalX: 50,
+              focalY: 50,
+            },
           ],
           focalX: 50,
           focalY: 30,
@@ -454,16 +577,30 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     var focalX = item.focalX !== undefined ? item.focalX : 50;
     var focalY = item.focalY !== undefined ? item.focalY : 50;
 
+    // v3.0 - Render extra images avec focal picker
     var extraImagesHTML = (item.extraImages || [])
-      .map(function (url, ei) {
+      .map(function (extra, ei) {
+        var extraUrl = typeof extra === "object" ? extra.url : extra;
+        var extraFX =
+          typeof extra === "object" && extra.focalX !== undefined
+            ? extra.focalX
+            : 50;
+        var extraFY =
+          typeof extra === "object" && extra.focalY !== undefined
+            ? extra.focalY
+            : 50;
+
         return (
-          '<div class="tpl-extra-image-row" style="display:flex;gap:8px;align-items:center;margin-top:8px;">' +
-          '<input type="text" class="tpl-input url" style="flex:1;"' +
+          '<div class="tpl-extra-image-card" style="background:rgba(15,23,42,0.5);border:1px solid #1e293b;border-radius:10px;padding:12px;margin-top:10px;">' +
+          // URL input + remove button
+          '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">' +
+          '<input type="text" class="tpl-input url" style="flex:1;font-size:11px;"' +
           ' id="tpl-item-' +
           index +
           "-extra-" +
           ei +
-          '" name="item_' +
+          '"' +
+          ' name="item_' +
           index +
           "_extra_" +
           ei +
@@ -474,7 +611,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           ei +
           '"' +
           ' autocomplete="off" value="' +
-          helpers.escapeHtml(url) +
+          helpers.escapeHtml(extraUrl) +
           '" placeholder="https://...">' +
           '<button type="button" class="tpl-contact-remove"' +
           ' data-remove-extra-index="' +
@@ -485,15 +622,98 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
           ' style="width:32px;height:32px;flex-shrink:0;">' +
           '<i class="fas fa-times"></i>' +
           "</button>" +
+          "</div>" +
+          // Focal picker pour l'extra
+          '<div style="display:flex;gap:10px;align-items:flex-start;">' +
+          '<div id="extra-focal-picker-' +
+          index +
+          "-" +
+          ei +
+          '"' +
+          ' onclick="window._gallery3dExtraFocalPick(event, ' +
+          index +
+          ", " +
+          ei +
+          ')"' +
+          ' style="position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;cursor:crosshair;border:2px solid #334155;flex-shrink:0;background:#1e293b;">' +
+          '<img src="' +
+          helpers.escapeHtml(extraUrl) +
+          '"' +
+          ' style="width:100%;height:100%;object-fit:contain;pointer-events:none;"' +
+          " onerror=\"this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 80 80%22><rect fill=%22%23374151%22 width=%2280%22 height=%2280%22/><text x=%2240%22 y=%2245%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%228%22>Image</text></svg>'\">" +
+          '<div class="focal-dot" style="position:absolute;width:12px;height:12px;background:rgba(239,68,68,0.9);border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.5);transform:translate(-50%,-50%);pointer-events:none;left:' +
+          extraFX +
+          "%;top:" +
+          extraFY +
+          '%;"></div>' +
+          "</div>" +
+          '<div style="flex:1;">' +
+          '<div style="color:#94a3b8;font-size:10px;margin-bottom:6px;">📍 Point focal</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span style="color:#e2e8f0;font-size:11px;">Position: <span id="extra-focal-label-' +
+          index +
+          "-" +
+          ei +
+          '" style="color:#6366f1;font-weight:600;">' +
+          extraFX +
+          "%, " +
+          extraFY +
+          "%</span></span>" +
+          '<button type="button" onclick="window._gallery3dExtraFocalReset(event, ' +
+          index +
+          ", " +
+          ei +
+          ')"' +
+          ' style="background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:3px 8px;border-radius:4px;font-size:10px;cursor:pointer;">↺</button>' +
+          "</div>" +
+          "</div>" +
+          "</div>" +
+          // Hidden inputs pour focal
+          '<input type="hidden" id="tpl-extra-focalX-' +
+          index +
+          "-" +
+          ei +
+          '"' +
+          ' name="extra_focalX_' +
+          index +
+          "_" +
+          ei +
+          '"' +
+          ' data-extra-field="focalX" data-item-index="' +
+          index +
+          '" data-extra-index="' +
+          ei +
+          '"' +
+          ' value="' +
+          extraFX +
+          '">' +
+          '<input type="hidden" id="tpl-extra-focalY-' +
+          index +
+          "-" +
+          ei +
+          '"' +
+          ' name="extra_focalY_' +
+          index +
+          "_" +
+          ei +
+          '"' +
+          ' data-extra-field="focalY" data-item-index="' +
+          index +
+          '" data-extra-index="' +
+          ei +
+          '"' +
+          ' value="' +
+          extraFY +
+          '">' +
           "</div>"
         );
       })
       .join("");
 
-    // Focal Point Picker HTML
+    // Focal Point Picker HTML pour image principale
     var focalPickerHTML =
       '<div class="tpl-field-group" style="margin-top:16px;">' +
-      '<label class="tpl-field-label">📍 Point focal (cliquez sur l\'image)</label>' +
+      '<div class="tpl-field-label">📍 Point focal (cliquez sur l\'image)</div>' +
       '<div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;">' +
       // Miniature cliquable - CARRÉ pour voir toute l'image
       '<div id="focal-picker-' +
@@ -518,7 +738,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       '" ' +
       'style="width:100%;height:100%;object-fit:contain;pointer-events:none;" ' +
       "onerror=\"this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 120 120%22><rect fill=%22%23374151%22 width=%22120%22 height=%22120%22/><text x=%2260%22 y=%2265%22 fill=%22%239CA3AF%22 text-anchor=%22middle%22 font-size=%2210%22>Image</text></svg>'\">" +
-      // Point focal (dot) - positionné par rapport à l'image, pas le conteneur
+      // Point focal (dot)
       '<div class="focal-dot" style="' +
       "position:absolute;" +
       "width:16px;" +
@@ -694,7 +914,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "</div>" +
       '<div class="tpl-field-group">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-      '<label class="tpl-field-label" style="margin:0;">Images supplémentaires</label>' +
+      '<div class="tpl-field-label" style="margin:0;">Images supplémentaires</div>' +
       '<button type="button" class="tpl-add-btn" style="width:28px;height:28px;font-size:12px;"' +
       ' data-add-extra-to="' +
       index +
@@ -715,7 +935,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     );
   },
 
-  // ===== APERÇU LIVE INTERACTIF - v1.9 avec focal point =====
+  // ===== APERÇU LIVE INTERACTIF - v3.0 avec focal point sur extras =====
   renderPreview: function (data, helpers) {
     var settings = data.settings || {
       showDetailPopup: true,
@@ -957,7 +1177,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     );
   },
 
-  // ===== GÉNÉRATION DU JS FINAL =====
+  // ===== GÉNÉRATION DU JS FINAL (v3.0 - extraImages comme objets avec focal) =====
   generateJS: function (objectName, data) {
     var self = this;
     var settings = data.settings || {
@@ -966,15 +1186,33 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
     };
     var items = data.items || [];
 
-    // Construire le tableau d'items avec focal points
+    // Construire le tableau d'items avec focal points (y compris sur extras)
     var itemsCode = items
       .map(function (item) {
         var focalX = item.focalX !== undefined ? item.focalX : 50;
         var focalY = item.focalY !== undefined ? item.focalY : 50;
 
+        // v3.0 - Générer les extraImages comme tableau d'objets avec focal
         var extraImgsCode = (item.extraImages || [])
-          .map(function (url) {
-            return '"' + self.escapeJS(url) + '"';
+          .map(function (extra) {
+            var url = typeof extra === "object" ? extra.url : extra;
+            var fX =
+              typeof extra === "object" && extra.focalX !== undefined
+                ? extra.focalX
+                : 50;
+            var fY =
+              typeof extra === "object" && extra.focalY !== undefined
+                ? extra.focalY
+                : 50;
+            return (
+              '{url:"' +
+              self.escapeJS(url) +
+              '",focalX:' +
+              fX +
+              ",focalY:" +
+              fY +
+              "}"
+            );
           })
           .join(",");
 
@@ -1155,6 +1393,7 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "  update3D(newIndex);\n" +
       "}\n" +
       "\n" +
+      "// v3.0 - openDetail avec support focal sur extras\n" +
       "function openDetail(index) {\n" +
       "  var item = ITEMS[index];\n" +
       "  var fX = item.focalX || 50;\n" +
@@ -1167,7 +1406,12 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       "  if (item.extraImages && item.extraImages.length > 0) {\n" +
       "    extrasHTML = '<p style=\"color:rgba(255,255,255,0.5);font-size:14px;text-transform:uppercase;letter-spacing:2px;margin:35px 0 15px;\">' + SETTINGS.extraImagesLabel + '</p><div style=\"display:flex;gap:15px;flex-wrap:wrap;\">';\n" +
       "    for (var e = 0; e < item.extraImages.length; e++) {\n" +
-      "      extrasHTML += '<img src=\"' + item.extraImages[e] + '\" data-extra=\"' + e + '\" class=\"popup-' + ID + '-extra-img\">';\n" +
+      "      var extra = item.extraImages[e];\n" +
+      "      // v3.0 - Support both string and object format\n" +
+      '      var extraUrl = typeof extra === "object" ? extra.url : extra;\n' +
+      '      var extraFX = typeof extra === "object" && extra.focalX !== undefined ? extra.focalX : 50;\n' +
+      '      var extraFY = typeof extra === "object" && extra.focalY !== undefined ? extra.focalY : 50;\n' +
+      "      extrasHTML += '<img src=\"' + extraUrl + '\" data-extra=\"' + e + '\" data-focal-x=\"' + extraFX + '\" data-focal-y=\"' + extraFY + '\" class=\"popup-' + ID + '-extra-img\" style=\"object-position:' + extraFX + '% ' + extraFY + '%\">';\n" +
       "    }\n" +
       '    extrasHTML += "</div>";\n' +
       "  }\n" +
@@ -1187,8 +1431,13 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       '  d.querySelector(".popup-" + ID + "-detail-close").onclick = closeDetail;\n' +
       "  d.onclick = function(ev) {\n" +
       "    if (ev.target === d) closeDetail();\n" +
+      "    // v3.0 - Click on extra updates main image with its focal point\n" +
       "    if (ev.target.dataset.extra !== undefined) {\n" +
-      '      document.getElementById("popup-" + ID + "-main-img").src = item.extraImages[ev.target.dataset.extra];\n' +
+      '      var mainImg = document.getElementById("popup-" + ID + "-main-img");\n' +
+      "      var newFX = ev.target.dataset.focalX || 50;\n" +
+      "      var newFY = ev.target.dataset.focalY || 50;\n" +
+      "      mainImg.src = ev.target.src;\n" +
+      '      mainImg.style.objectPosition = newFX + "% " + newFY + "%";\n' +
       "    }\n" +
       "  };\n" +
       "}\n" +
@@ -1266,8 +1515,9 @@ window.ATLANTIS_TEMPLATES.gallery3d = {
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"')
       .replace(/'/g, "\\'")
-      .replace(/\n/g, "\\n");
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r");
   },
 };
 
-console.log("🎠 Template Gallery 3D v1.9 chargé (focal point picker)");
+console.log("🎠 Template Gallery 3D v3.0 chargé (focal point sur extras)");

@@ -15,6 +15,7 @@
  * v2.0 - 2024-12-11 - Fix Focal: conteneur carré + contain + calcul coordonnées correct
  * v2.1 - 2024-12-11 - Fix Focal: dispatch event pour X ET Y (preview temps réel)
  * v3.0 - 2024-12-11 - Focal Point sur images supplémentaires (extraImages devient objets)
+ * v3.1 - 2024-12-12 - Fix: détail update en place + track extra sélectionné
  * ============================================
  */
 
@@ -25,6 +26,8 @@ window._gallery3dPreview = {
   activeIndex: 0,
   items: [],
   settings: {},
+  detailOpenIndex: null, // v3.1 - Garde l'état du détail ouvert
+  detailExtraIndex: null, // v3.1 - Garde l'index de l'extra affiché (null = image principale)
 };
 
 // Fonctions globales pour l'interactivité de la preview
@@ -107,6 +110,10 @@ window._gallery3dPreviewShowDetail = function (index) {
   var old = document.getElementById("preview-detail-overlay");
   if (old) old.remove();
 
+  // v3.1 - Garder trace du détail ouvert + reset extra sélectionné
+  state.detailOpenIndex = index;
+  state.detailExtraIndex = null; // On repart sur l'image principale
+
   var focalX = item.focalX !== undefined ? item.focalX : 50;
   var focalY = item.focalY !== undefined ? item.focalY : 50;
 
@@ -175,20 +182,23 @@ window._gallery3dPreviewShowDetail = function (index) {
     focalY +
     "%;" +
     '">' +
-    '<button onclick="document.getElementById(\'preview-detail-overlay\').remove()" style="' +
+    '<button onclick="window._gallery3dPreviewCloseDetail()" style="' +
     "position:absolute;top:12px;right:12px;width:32px;height:32px;" +
     "background:rgba(0,0,0,0.6);border:none;border-radius:50%;" +
     "color:white;font-size:16px;cursor:pointer;" +
     '">✕</button>' +
     "</div>" +
     '<div style="padding:20px;">' +
-    '<h3 style="color:white;font-size:18px;margin:0 0 8px;font-weight:600;">' +
+    '<h3 id="preview-detail-title" style="color:white;font-size:18px;margin:0 0 8px;font-weight:600;">' +
     (item.title || "Sans titre") +
     "</h3>" +
-    '<p style="color:rgba(255,255,255,0.7);font-size:13px;line-height:1.5;margin:0;">' +
+    '<div id="preview-detail-back-link"></div>' +
+    '<p id="preview-detail-desc" style="color:rgba(255,255,255,0.7);font-size:13px;line-height:1.5;margin:0;">' +
     (item.description || "Aucune description") +
     "</p>" +
+    '<div id="preview-detail-extras">' +
     extraImagesHTML +
+    "</div>" +
     "</div>" +
     "</div>" +
     "</div>";
@@ -202,10 +212,14 @@ window._gallery3dPreviewShowDetail = function (index) {
     if (overlay) {
       overlay.addEventListener("click", function (e) {
         if (e.target === overlay) {
-          overlay.remove();
+          window._gallery3dPreviewCloseDetail();
           return;
         }
         if (e.target.dataset.extra !== undefined) {
+          var extraIndex = parseInt(e.target.dataset.extra, 10);
+          // v3.1 - Tracker quel extra est affiché
+          window._gallery3dPreview.detailExtraIndex = extraIndex;
+
           var mainImg = document.getElementById("preview-detail-main-img");
           if (mainImg) {
             mainImg.src = e.target.src;
@@ -222,6 +236,151 @@ window._gallery3dPreviewShowDetail = function (index) {
 window._gallery3dPreviewSetMainImg = function (url) {
   var img = document.getElementById("preview-detail-main-img");
   if (img) img.src = url;
+};
+
+// v3.1 - Met à jour le contenu du détail en place (sans recréer le HTML)
+window._gallery3dPreviewUpdateDetail = function () {
+  var state = window._gallery3dPreview;
+  var index = state.detailOpenIndex;
+  if (index === null || index === undefined) return;
+
+  var item = state.items[index];
+  if (!item) return;
+
+  // v3.1 - Si un extra est sélectionné, afficher l'extra, sinon l'image principale
+  var imgSrc, focalX, focalY;
+  var extraIdx = state.detailExtraIndex;
+
+  if (
+    extraIdx !== null &&
+    extraIdx !== undefined &&
+    item.extraImages &&
+    item.extraImages[extraIdx]
+  ) {
+    var extra = item.extraImages[extraIdx];
+    imgSrc = typeof extra === "object" ? extra.url : extra;
+    focalX =
+      typeof extra === "object" && extra.focalX !== undefined
+        ? extra.focalX
+        : 50;
+    focalY =
+      typeof extra === "object" && extra.focalY !== undefined
+        ? extra.focalY
+        : 50;
+  } else {
+    imgSrc = item.image || "";
+    focalX = item.focalX !== undefined ? item.focalX : 50;
+    focalY = item.focalY !== undefined ? item.focalY : 50;
+  }
+
+  // Mettre à jour l'image principale du détail
+  var mainImg = document.getElementById("preview-detail-main-img");
+  if (mainImg) {
+    mainImg.src = imgSrc;
+    mainImg.style.objectPosition = focalX + "% " + focalY + "%";
+  }
+
+  // Mettre à jour le titre
+  var titleEl = document.getElementById("preview-detail-title");
+  if (titleEl) {
+    titleEl.textContent = item.title || "Sans titre";
+  }
+
+  // v3.1 - Mettre à jour le lien de retour (visible seulement si un extra est affiché)
+  var backLinkEl = document.getElementById("preview-detail-back-link");
+  if (backLinkEl) {
+    if (extraIdx !== null && extraIdx !== undefined) {
+      backLinkEl.innerHTML =
+        '<a href="#" onclick="window._gallery3dPreviewBackToMain();return false;" ' +
+        'style="color:#6366f1;font-size:11px;text-decoration:none;display:inline-block;margin-bottom:8px;">' +
+        "← Retour à l'image principale</a>";
+    } else {
+      backLinkEl.innerHTML = "";
+    }
+  }
+
+  // Mettre à jour la description
+  var descEl = document.getElementById("preview-detail-desc");
+  if (descEl) {
+    descEl.textContent = item.description || "Aucune description";
+  }
+
+  // Mettre à jour les extras
+  var extrasContainer = document.getElementById("preview-detail-extras");
+  if (extrasContainer) {
+    var extraImagesHTML = "";
+    if (item.extraImages && item.extraImages.length > 0) {
+      extraImagesHTML =
+        '<p style="color:rgba(255,255,255,0.4);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;">' +
+        (state.settings.extraImagesLabel || "Plus de photos") +
+        "</p>" +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+      item.extraImages.forEach(function (extra, ei) {
+        var extraUrl = typeof extra === "object" ? extra.url : extra;
+        var extraFX =
+          typeof extra === "object" && extra.focalX !== undefined
+            ? extra.focalX
+            : 50;
+        var extraFY =
+          typeof extra === "object" && extra.focalY !== undefined
+            ? extra.focalY
+            : 50;
+        // v3.1 - Highlight si cet extra est sélectionné
+        var isSelected = state.detailExtraIndex === ei;
+        var borderStyle = isSelected
+          ? "2px solid #6366f1"
+          : "2px solid transparent";
+        var opacityStyle = isSelected ? "1" : "0.7";
+        extraImagesHTML +=
+          '<img src="' +
+          extraUrl +
+          '" ' +
+          'data-extra="' +
+          ei +
+          '" ' +
+          'data-focal-x="' +
+          extraFX +
+          '" ' +
+          'data-focal-y="' +
+          extraFY +
+          '" ' +
+          'style="width:60px;height:45px;object-fit:cover;object-position:' +
+          extraFX +
+          "% " +
+          extraFY +
+          "%;border-radius:6px;cursor:pointer;" +
+          "opacity:" +
+          opacityStyle +
+          ";border:" +
+          borderStyle +
+          ';transition:all 0.2s;" ' +
+          'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=' +
+          opacityStyle +
+          '">';
+      });
+      extraImagesHTML += "</div>";
+    }
+    extrasContainer.innerHTML = extraImagesHTML;
+  }
+};
+
+// v3.1 - Fermer le détail et rafraîchir le carrousel
+window._gallery3dPreviewCloseDetail = function () {
+  window._gallery3dPreview.detailOpenIndex = null;
+  window._gallery3dPreview.detailExtraIndex = null; // Reset l'extra aussi
+  var overlay = document.getElementById("preview-detail-overlay");
+  if (overlay) overlay.remove();
+
+  // Demander à template-editor de rafraîchir la preview (si disponible)
+  if (typeof window._atlantisRefreshPreview === "function") {
+    window._atlantisRefreshPreview();
+  }
+};
+
+// v3.1 - Revenir à l'image principale (depuis un extra)
+window._gallery3dPreviewBackToMain = function () {
+  window._gallery3dPreview.detailExtraIndex = null;
+  window._gallery3dPreviewUpdateDetail();
 };
 
 // ===== FOCAL POINT PICKER - IMAGE PRINCIPALE =====

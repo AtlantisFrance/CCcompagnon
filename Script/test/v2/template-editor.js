@@ -9,6 +9,7 @@
  * v2.7 - 2024-12-11 - Support Gallery3D (items, extraImages, settings)
  * v2.8 - 2024-12-11 - Fix Gallery3D: focalX/focalY int + update miniature on URL change
  * v2.9 - 2024-12-11 - Support focal points sur extraImages (objets {url, focalX, focalY})
+ * v3.0 - 2024-12-12 - Fix: preview Gallery3D garde le détail ouvert lors des updates
  * ============================================
  */
 
@@ -657,7 +658,32 @@
 
   function updatePreview() {
     const stage = document.getElementById("tpl-preview-stage");
-    if (stage) stage.innerHTML = renderPreview();
+    if (!stage) return;
+
+    // v3.0 - Si le détail Gallery3D est ouvert, mettre à jour seulement son contenu
+    const detailOverlay = document.getElementById("preview-detail-overlay");
+    if (
+      detailOverlay &&
+      window._gallery3dPreview?.detailOpenIndex !== null &&
+      window._gallery3dPreview?.detailOpenIndex !== undefined
+    ) {
+      // Mettre à jour les données du state (items, settings)
+      const tpl = window.ATLANTIS_TEMPLATES?.[state.templateType];
+      if (tpl?.renderPreview && state.templateType === "gallery3d") {
+        // Juste mettre à jour le state sans recréer le HTML
+        window._gallery3dPreview.items = state.templateData.items || [];
+        window._gallery3dPreview.settings = state.templateData.settings || {};
+      }
+
+      // Mettre à jour le contenu du détail en place
+      if (typeof window._gallery3dPreviewUpdateDetail === "function") {
+        window._gallery3dPreviewUpdateDetail();
+      }
+      return; // Ne pas recréer le carrousel
+    }
+
+    // Comportement normal pour tous les autres cas
+    stage.innerHTML = renderPreview();
   }
 
   // Met à jour SEULEMENT le formulaire (pas tout le modal)
@@ -1365,6 +1391,14 @@
 
   // Commande principale : template_edit("objectId")
   window.template_edit = openFor;
+
+  // v3.0 - Fonction de refresh pour gallery3d (appelée quand le détail se ferme)
+  window._atlantisRefreshPreview = function () {
+    const stage = document.getElementById("tpl-preview-stage");
+    if (stage) {
+      stage.innerHTML = renderPreview();
+    }
+  };
 
   // Générer dynamiquement les raccourcis depuis objects-config.js
   // Ex: c1_obj → window.c1_openeditor()

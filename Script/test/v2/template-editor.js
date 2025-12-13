@@ -10,6 +10,7 @@
  * v2.8 - 2024-12-11 - Fix Gallery3D: focalX/focalY int + update miniature on URL change
  * v2.9 - 2024-12-11 - Support focal points sur extraImages (objets {url, focalX, focalY})
  * v3.0 - 2024-12-12 - Fix: preview Gallery3D garde le détail ouvert lors des updates
+ * v3.1 - 2024-12-13 - Fix: chargement popup existante (data.data wrapper)
  * ============================================
  */
 
@@ -349,11 +350,14 @@
         const data = await res.json();
         console.log("📥 API response:", data);
 
-        if (data.success && data.exists && data.template) {
-          state.templateType = data.template.template_type || "contact";
+        // Fix: data est wrappé dans data.data par successResponse()
+        const responseData = data.data || data;
+
+        if (data.success && responseData.exists && responseData.template) {
+          state.templateType = responseData.template.template_type || "contact";
           try {
             state.templateData = JSON.parse(
-              data.template.template_config || "{}"
+              responseData.template.template_config || "{}"
             );
             console.log("📥 Loaded templateData:", state.templateData);
           } catch (e) {

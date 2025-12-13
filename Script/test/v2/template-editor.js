@@ -11,6 +11,7 @@
  * v2.9 - 2024-12-11 - Support focal points sur extraImages (objets {url, focalX, focalY})
  * v3.0 - 2024-12-12 - Fix: preview Gallery3D garde le détail ouvert lors des updates
  * v3.1 - 2024-12-13 - Fix: chargement popup existante (data.data wrapper)
+ * v3.2 - 2024-12-13 - Support template Product: champs imbriques (style.*, buyButton.*)
  * ============================================
  */
 
@@ -170,6 +171,13 @@
         icon: "🎠",
         description: "Carrousel 3D",
         file: "gallery3d.tpl.js",
+      },
+      {
+        id: "product",
+        name: "Fiche Produit",
+        icon: "🛒",
+        description: "Galerie, prix et CTA",
+        file: "product.tpl.js",
       },
     ];
     return false;
@@ -764,21 +772,58 @@
     const target = e.target;
 
     // ========================================
-    // 📝 INPUTS SIMPLES (data-field)
+    // 📝 INPUTS SIMPLES (data-field) + CHAMPS IMBRIQUES (style.accent, buyButton.visible, etc.)
     // ========================================
     if (target.dataset.field) {
       const field = target.dataset.field;
+      const value = target.type === "checkbox" ? target.checked : target.value;
 
-      // Gérer les checkboxes
-      if (target.type === "checkbox") {
-        state.templateData[field] = target.checked;
-      } else {
-        state.templateData[field] = target.value;
+      // Cas special: services (textarea -> array de lignes)
+      if (field === "services") {
+        const lines = value.split("\n").filter(function(line) {
+          return line.trim() !== "";
+        });
+        state.templateData.services = lines;
+        state.hasChanges = true;
+        console.log("📝 Services =", lines);
+        updateStatus();
+        updatePreview();
+        return;
       }
+
+      // Gerer les champs imbriques avec notation pointee (ex: style.accent, buyButton.visible)
+      if (field.includes(".")) {
+        const parts = field.split(".");
+        const parentKey = parts[0];
+        const childKey = parts[1];
+
+        // S'assurer que l'objet parent existe
+        if (!state.templateData[parentKey]) {
+          state.templateData[parentKey] = {};
+        }
+
+        // Convertir en nombre pour les sliders numeriques
+        if (target.type === "range" || target.type === "number") {
+          state.templateData[parentKey][childKey] = parseFloat(value) || 0;
+        } else {
+          state.templateData[parentKey][childKey] = value;
+        }
+
+        console.log(`📝 Field "${parentKey}.${childKey}" =`, state.templateData[parentKey][childKey]);
+
+        // Mettre a jour l'affichage du slider si present (lowercase pour compatibilite)
+        const display = document.getElementById(`tpl-${childKey.toLowerCase()}-value`);
+        if (display) {
+          const suffix = childKey === "infoWidth" ? "%" : (childKey === "accent" ? "" : "px");
+          display.textContent = state.templateData[parentKey][childKey] + suffix;
+        }
+      } else {
+        // Champ simple (non imbrique)
+        state.templateData[field] = value;
+        console.log(`📝 Field "${field}" =`, state.templateData[field]);
+      }
+
       state.hasChanges = true;
-
-      console.log(`📝 Field "${field}" =`, state.templateData[field]);
-
       updateStatus();
       updatePreview();
       return;
@@ -982,6 +1027,63 @@
       updatePreview();
       return;
     }
+
+    // ========================================
+    // 🏷️ TAG FIELDS (data-tag-field) - Product template
+    // ========================================
+    if (target.dataset.tagField) {
+      const index = parseInt(target.dataset.tagIndex);
+      const field = target.dataset.tagField;
+
+      if (!state.templateData.tags) state.templateData.tags = [];
+      if (!state.templateData.tags[index]) return;
+
+      state.templateData.tags[index][field] = target.value;
+      state.hasChanges = true;
+
+      console.log(`🏷️ Tag[${index}].${field} =`, target.value);
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
+
+    // ========================================
+    // 🖼️ IMAGE FIELDS (data-image-field) - Product template
+    // ========================================
+    if (target.dataset.imageField) {
+      const index = parseInt(target.dataset.imageIndex);
+      const field = target.dataset.imageField;
+
+      if (!state.templateData.images) state.templateData.images = [];
+
+      // S'assurer que l'array est assez grand
+      while (state.templateData.images.length <= index) {
+        state.templateData.images.push("");
+      }
+
+      if (field === "url") {
+        state.templateData.images[index] = target.value;
+      }
+      state.hasChanges = true;
+
+      console.log(`🖼️ Image[${index}] =`, target.value);
+
+      // Mettre a jour la miniature (utiliser .tpl-item-card pour trouver le parent, pas [data-image-index] qui match l'input)
+      const card = target.closest(".tpl-item-card");
+      if (card) {
+        const img = card.querySelector("img");
+        if (img) {
+          img.src = target.value || "";
+          img.style.display = target.value ? "block" : "none";
+        }
+      }
+
+      updateStatus();
+      updatePreview();
+      return;
+    }
+
   }
 
   function handleAllClicks(e) {
@@ -1117,6 +1219,48 @@
       return;
     }
 
+    // ========================================
+    // 🛒 PRODUCT: Add tag (v3.2)
+    // ========================================
+    if (btn.id === "btn-add-tag" || btn.closest("#btn-add-tag")) {
+      addProductTag();
+      return;
+    }
+
+    // ========================================
+    // 🛒 PRODUCT: Remove tag (v3.2)
+    // ========================================
+    if (
+      btn.dataset.removeTag !== undefined ||
+      btn.closest("[data-remove-tag]")
+    ) {
+      const removeBtn = btn.closest("[data-remove-tag]") || btn;
+      const index = parseInt(removeBtn.dataset.removeTag);
+      removeProductTag(index);
+      return;
+    }
+
+    // ========================================
+    // 🛒 PRODUCT: Add image (v3.2)
+    // ========================================
+    if (btn.id === "btn-add-image" || btn.closest("#btn-add-image")) {
+      addProductImage();
+      return;
+    }
+
+    // ========================================
+    // 🛒 PRODUCT: Remove image (v3.2)
+    // ========================================
+    if (
+      btn.dataset.removeImage !== undefined ||
+      btn.closest("[data-remove-image]")
+    ) {
+      const removeBtn = btn.closest("[data-remove-image]") || btn;
+      const index = parseInt(removeBtn.dataset.removeImage);
+      removeProductImage(index);
+      return;
+    }
+
     // Click outside modal
     if (target.classList.contains("tpl-editor-overlay")) {
       close();
@@ -1235,6 +1379,62 @@
     console.log(
       `🖼️ Extra image [${extraIndex}] supprimée de Item[${itemIndex}]`
     );
+  }
+
+  // ============================================
+  // 🛒 PRODUCT FUNCTIONS (v3.2)
+  // ============================================
+  function addProductTag() {
+    if (!state.templateData.tags) state.templateData.tags = [];
+
+    state.templateData.tags.push({
+      icon: "star",
+      label: "Nouveau tag"
+    });
+    state.hasChanges = true;
+
+    console.log("🏷️ Tag ajoute");
+
+    updateFormOnly();
+  }
+
+  function removeProductTag(index) {
+    if (!state.templateData.tags) return;
+
+    state.templateData.tags.splice(index, 1);
+    state.hasChanges = true;
+
+    console.log(`🏷️ Tag[${index}] supprime`);
+
+    updateFormOnly();
+  }
+
+  function addProductImage() {
+    if (!state.templateData.images) state.templateData.images = [];
+
+    // Max 5 images
+    if (state.templateData.images.length >= 5) {
+      console.warn("🖼️ Maximum 5 images atteint");
+      return;
+    }
+
+    state.templateData.images.push("");
+    state.hasChanges = true;
+
+    console.log("🖼️ Image ajoutee");
+
+    updateFormOnly();
+  }
+
+  function removeProductImage(index) {
+    if (!state.templateData.images) return;
+
+    state.templateData.images.splice(index, 1);
+    state.hasChanges = true;
+
+    console.log(`🖼️ Image[${index}] supprimee`);
+
+    updateFormOnly();
   }
 
   // ============================================
@@ -1438,6 +1638,6 @@
   }
 
   console.log(
-    "🎨 Popup Studio Editor v2.8 chargé! (Dynamic Templates + Gallery3D + Focal Fix)"
+    "🎨 Popup Studio Editor v3.2 chargé! (Dynamic Templates + Gallery3D + Product support)"
   );
 })();
